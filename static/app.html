@@ -629,19 +629,37 @@ function locatePosition() {
 
       // 自动识别城市（逆地理编码）
       if (gAmap) {
-        var geocoder = new gAmap.Geocoder({ city: '', radius: 1000 });
-        geocoder.getAddress([lng, lat], function(status, result) {
-          if (status === 'complete' && result.regeocode && result.regeocode.addressComponent) {
-            var city = result.regeocode.addressComponent.city
-                      || result.regeocode.addressComponent.province
-                      || '';
-            // 去掉"市"字
-            city = city.replace('市', '');
-            if (city) {
-              document.getElementById('city').value = city;
-            }
-          }
-        });
+        try {
+          gAmap.plugin(['AMap.Geocoder'], function() {
+            var geocoder = new gAmap.Geocoder({ city: '', radius: 1000 });
+            geocoder.getAddress([lng, lat], function(status, result) {
+              try {
+                if (status === 'complete' && result && result.regeocode) {
+                  var comp = result.regeocode.addressComponent;
+                  // 上海、北京等直辖市 city 可能为空，用 province 代替
+                  var city = comp.city || comp.province || '';
+                  city = city.replace(/[市省]/g, '');
+                  // 有时 province 返回"上海市"，去掉"市"后可能变成"上海"或""
+                  var district = comp.district || '';
+                  if (!city && district) {
+                    // 从区名反推城市（如"浦东新区" → "上海"）
+                    if (district.indexOf('北京') > -1) city = '北京';
+                    else if (district.indexOf('上海') > -1) city = '上海';
+                    else if (district.indexOf('天津') > -1) city = '天津';
+                    else if (district.indexOf('重庆') > -1) city = '重庆';
+                  }
+                  if (city) {
+                    document.getElementById('city').value = city;
+                  }
+                }
+              } catch(e) {
+                console.warn('Geocoder parse error', e);
+              }
+            });
+          });
+        } catch(e) {
+          console.warn('Geocoder plugin error', e);
+        }
       }
 
       btn.textContent = '✅ 已定位';
