@@ -616,8 +616,10 @@ function startDrive() {
   var route = routeData.route || [];
   if (!route.length) return;
   var first = route[0];
+  // 从起点导航到第一个换电站
   var url = 'https://uri.amap.com/navigation?from=' + routeParams.start_lng + ',' + routeParams.start_lat + ',起点&to=' + first.lng + ',' + first.lat + ',' + encodeURIComponent(first.station_name) + '&mode=car';
-  window.open(url, '_blank');
+  // 用 location.href 替代 window.open 避免被拦截
+  window.location.href = url;
 }
 
 // ===================== 工具 =====================
