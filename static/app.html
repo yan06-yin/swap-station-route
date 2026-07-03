@@ -707,10 +707,19 @@ async function createRoute() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    var data = await resp.json();
+
+    // 处理非 JSON 响应
+    var text = await resp.text();
+    var data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      showError('服务器错误: ' + text.slice(0, 200));
+      return;
+    }
 
     if (!resp.ok) {
-      showError(data.detail || '生成失败');
+      showError(data.detail || '生成失败 (code ' + resp.status + ')');
       return;
     }
 
