@@ -632,27 +632,20 @@ function startDrive() {
   if (!route.length) return;
 
   var startName = encodeURIComponent(routeParams.start_name || '起点');
-  var last = route[route.length - 1];
-  var endName = encodeURIComponent(routeParams.end_name || last.station_name);
+  var endName = encodeURIComponent(routeParams.end_name || route[route.length - 1].station_name);
 
-  // 起点 → 途经所有站 → 终点（一条路线）
-  // 高德驾车路线规划 API 支持多途经点
-  var url = 'https://uri.amap.com/navigation?from='
-    + routeParams.start_lng + ',' + routeParams.start_lat + ',' + startName
-    + '&to=' + last.lng + ',' + last.lat + ',' + endName
-    + '&mode=car&coordinate=gaode';
+  // 使用高德路线规划（支持多途经点）
+  // 格式: https://www.amap.com/dir?type=car&from=...&to=...&mid=...
+  var url = 'https://www.amap.com/dir?type=car'
+    + '&from=' + routeParams.start_lng + ',' + routeParams.start_lat + ',' + startName
+    + '&to=' + route[route.length - 1].lng + ',' + route[route.length - 1].lat + ',' + endName;
 
-  // 中间站点作为途经点
-  var via = '';
+  // 中间站点作为途经点（编号 1,2,3...）
   for (var i = 0; i < route.length - 1; i++) {
     var s = route[i];
-    via += s.lng + ',' + s.lat + ',' + encodeURIComponent(s.station_name) + ';';
-  }
-  if (via) {
-    url += '&via=' + via.slice(0, -1);
+    url += '&mid=' + (i + 1) + ',' + s.lng + ',' + s.lat + ',' + encodeURIComponent(s.station_name);
   }
 
-  // 尝试打开高德APP（已安装则跳转APP，否则打开网页版）
   window.location.href = url;
 }
 
