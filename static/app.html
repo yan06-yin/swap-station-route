@@ -7,18 +7,46 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #0a0e1a; color: #e0e6f0; min-height: 100vh; }
-  .container { max-width: 600px; margin: 0 auto; padding: 20px 16px 40px; }
+  .container { max-width: 640px; margin: 0 auto; padding: 20px 16px 40px; }
 
-  .logo { text-align: center; padding: 30px 0 20px; }
-  .logo h1 { font-size: 22px; color: #fff; }
-  .logo p { font-size: 13px; color: #6b7d95; margin-top: 6px; }
+  .logo { text-align: center; padding: 20px 0 16px; }
+  .logo h1 { font-size: 20px; color: #fff; }
+  .logo p { font-size: 12px; color: #6b7d95; margin-top: 4px; }
 
+  /* 地图卡片 */
+  .map-card { padding: 0; overflow: hidden; border-radius: 14px; }
+  #map-container { width: 100%; height: 320px; background: #0f1525; position: relative; }
+  .amap-container { background: #0f1525; }
+
+  /* 地图上的模式提示 */
+  .map-mode-bar {
+    position: absolute; top: 10px; left: 10px; right: 10px; z-index: 100;
+    display: flex; gap: 8px;
+  }
+  .map-mode-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: 1px solid rgba(100,180,255,0.2);
+    background: rgba(15,21,37,0.88); backdrop-filter: blur(8px);
+    color: #8899aa; font-size: 13px; font-weight: 500; cursor: pointer;
+    text-align: center; transition: all 0.2s;
+  }
+  .map-mode-btn.active { border-color: #4fc3f7; color: #4fc3f7; background: rgba(79,195,247,0.12); }
+  .map-mode-btn .icon { margin-right: 4px; }
+  .map-mode-btn.start.active { border-color: #4caf50; color: #4caf50; background: rgba(76,175,80,0.12); }
+  .map-mode-btn.end.active { border-color: #f44336; color: #f44336; background: rgba(244,67,54,0.12); }
+
+  .map-hint {
+    position: absolute; bottom: 10px; left: 10px; right: 10px; z-index: 100;
+    text-align: center; font-size: 12px; color: #6b7d95;
+    background: rgba(15,21,37,0.8); padding: 6px; border-radius: 6px;
+  }
+
+  /* 卡片 */
   .card {
     background: linear-gradient(135deg, #141b2d, #1a2340);
     border-radius: 14px; padding: 20px; margin-bottom: 14px;
     border: 1px solid rgba(100,180,255,0.1);
   }
-  .card-title { font-size: 14px; font-weight: 600; color: #4fc3f7; margin-bottom: 16px; display: flex; align-items: center; gap: 6px; }
+  .card-title { font-size: 14px; font-weight: 600; color: #4fc3f7; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
 
   .form-group { margin-bottom: 14px; }
   .form-group:last-child { margin-bottom: 0; }
@@ -32,7 +60,28 @@
   .form-group input::placeholder { color: #3a4a5a; }
   .form-row { display: flex; gap: 10px; }
   .form-row .form-group { flex: 1; }
+
   .coords-hint { font-size: 11px; color: #4a5568; margin-top: 4px; }
+  .coord-display {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: #0f1525; border-radius: 6px; border: 1px solid rgba(100,180,255,0.1);
+    font-size: 12px; font-family: monospace; color: #8899aa;
+  }
+  .coord-display .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot.start-dot { background: #4caf50; }
+  .dot.end-dot { background: #f44336; }
+
+  .locate-btn {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(79,195,247,0.3);
+    background: rgba(79,195,247,0.1); color: #4fc3f7;
+    font-size: 12px; cursor: pointer; white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .locate-btn:hover { background: rgba(79,195,247,0.2); }
+  .locate-btn.loading { opacity: 0.6; pointer-events: none; }
+  .locate-btn.done { border-color: #4caf50; color: #4caf50; }
 
   .btn-submit {
     width: 100%; padding: 14px; border-radius: 12px; border: none;
@@ -72,24 +121,17 @@
   .result-stat .val { font-size: 16px; font-weight: 700; color: #4fc3f7; }
   .result-stat .lbl { font-size: 10px; color: #6b7d95; margin-top: 2px; }
 
-  .result-link {
-    display: flex; gap: 8px; margin-top: 10px;
-  }
+  .result-link { display: flex; gap: 8px; margin-top: 10px; }
   .result-link a, .result-link button {
     flex: 1; padding: 10px; border-radius: 8px; text-align: center;
-    font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none;
-    border: none;
+    font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; border: none;
   }
-  .result-link a.primary, .result-link button.primary {
-    background: #4fc3f7; color: #0a0e1a; font-weight: 600;
-  }
+  .result-link a.primary, .result-link button.primary { background: #4fc3f7; color: #0a0e1a; font-weight: 600; }
   .result-link a.ghost, .result-link button.ghost {
-    background: rgba(79,195,247,0.1); border: 1px solid rgba(79,195,247,0.2);
-    color: #4fc3f7;
+    background: rgba(79,195,247,0.1); border: 1px solid rgba(79,195,247,0.2); color: #4fc3f7;
   }
   .result-link button.feishu {
-    background: rgba(50,100,255,0.15); border: 1px solid rgba(50,100,255,0.3);
-    color: #4a6cf7;
+    background: rgba(50,100,255,0.15); border: 1px solid rgba(50,100,255,0.3); color: #4a6cf7;
   }
 
   .feishu-section { margin-top: 12px; }
@@ -116,27 +158,13 @@
   }
   .success-msg.show { display: block; }
 
-  .locate-btn {
-    padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(79,195,247,0.3);
-    background: rgba(79,195,247,0.1); color: #4fc3f7;
-    font-size: 12px; cursor: pointer; white-space: nowrap;
-    transition: all 0.2s;
-  }
-  .locate-btn:hover { background: rgba(79,195,247,0.2); }
-  .locate-btn.loading { opacity: 0.6; pointer-events: none; }
-  .locate-btn.done { border-color: #4caf50; color: #4caf50; }
-
   .demo-link { text-align: center; margin-top: 16px; }
   .demo-link a { color: #4fc3f7; font-size: 13px; text-decoration: none; }
-  .demo-link a { color: #4fc3f7; font-size: 13px; text-decoration: none; }
-
-  .section-divider { height: 1px; background: rgba(100,180,255,0.08); margin: 16px 0; }
 
   .station-preview { margin-top: 12px; }
   .station-preview-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 0; font-size: 12px; color: #8899aa;
-    border-bottom: 1px solid rgba(100,180,255,0.05);
+    display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    font-size: 12px; color: #8899aa; border-bottom: 1px solid rgba(100,180,255,0.05);
   }
   .station-preview-item .num {
     width: 20px; height: 20px; border-radius: 50%;
@@ -145,6 +173,8 @@
     font-size: 11px; font-weight: 700; flex-shrink: 0;
   }
   .station-preview-item .soc { color: #4fc3f7; font-weight: 600; margin-left: auto; }
+
+  .section-divider { height: 1px; background: rgba(100,180,255,0.08); margin: 16px 0; }
 
   @media (max-width: 380px) {
     .result-stats { gap: 4px; }
@@ -158,8 +188,43 @@
 
   <div class="logo">
     <h1>⚡ 换电站打卡路线规划</h1>
-    <p>企业端 — 生成最优换电站打卡路线</p>
+    <p>企业端 — 在地图上点选起终点，自动生成最优路线</p>
   </div>
+
+  <!-- 地图卡片（点选起终点） -->
+  <div class="card map-card">
+    <div id="map-container">
+      <div class="map-mode-bar">
+        <div class="map-mode-btn start" id="mode-start" onclick="setMode('start')">
+          <span class="icon">🟢</span> 设置起点
+        </div>
+        <div class="map-mode-btn end" id="mode-end" onclick="setMode('end')">
+          <span class="icon">🔴</span> 设置终点
+        </div>
+        <div class="map-mode-btn" id="mode-clear" onclick="clearPoints()">
+          <span class="icon">🗑️</span> 清除
+        </div>
+      </div>
+      <div class="map-hint" id="map-hint">点击地图设置起点（绿色）和终点（红色）</div>
+    </div>
+    <div style="padding:12px;display:flex;gap:10px;">
+      <div class="coord-display" style="flex:1;">
+        <span class="dot start-dot"></span>
+        <span id="start-coord-display">起点: 未设置</span>
+      </div>
+      <div class="coord-display" style="flex:1;">
+        <span class="dot end-dot"></span>
+        <span id="end-coord-display">终点: 未设置</span>
+      </div>
+      <button class="locate-btn" onclick="locatePosition()" id="locate-btn" type="button">📍 定位</button>
+    </div>
+  </div>
+
+  <!-- 隐藏的坐标输入 -->
+  <input type="hidden" id="start_lng">
+  <input type="hidden" id="start_lat">
+  <input type="hidden" id="end_lng">
+  <input type="hidden" id="end_lat">
 
   <!-- 路线参数 -->
   <div class="card">
@@ -168,32 +233,20 @@
       <label>城市</label>
       <input type="text" id="city" placeholder="如 上海、北京、深圳" value="上海">
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>起点 经度</label>
-        <div style="display:flex;gap:6px;">
-          <input type="number" step="0.000001" id="start_lng" placeholder="121.500" value="121.500" style="flex:1;">
-          <button class="locate-btn" onclick="locatePosition('start')" id="locate-start" type="button">📍 定位</button>
-        </div>
-        <div class="coords-hint">高德坐标系 GCJ-02</div>
-      </div>
-      <div class="form-group">
-        <label>起点 纬度</label>
-        <input type="number" step="0.000001" id="start_lat" placeholder="31.240" value="31.240">
+    <div class="form-group">
+      <label>起点坐标</label>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="start_lng_display" placeholder="经度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
+        <input type="text" id="start_lat_display" placeholder="纬度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
+        <span style="font-size:11px;color:#4a5568;align-self:center;">← 点地图选</span>
       </div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>终点 经度</label>
-        <div style="display:flex;gap:6px;">
-          <input type="number" step="0.000001" id="end_lng" placeholder="121.395" value="121.395" style="flex:1;">
-          <button class="locate-btn" onclick="locatePosition('end')" id="locate-end" type="button">📍 定位</button>
-        </div>
-        <div class="coords-hint">也可用定位按钮获取</div>
-      </div>
-      <div class="form-group">
-        <label>终点 纬度</label>
-        <input type="number" step="0.000001" id="end_lat" placeholder="31.195" value="31.195">
+    <div class="form-group">
+      <label>终点坐标</label>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="end_lng_display" placeholder="经度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
+        <input type="text" id="end_lat_display" placeholder="纬度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
+        <span style="font-size:11px;color:#4a5568;align-self:center;">← 点地图选</span>
       </div>
     </div>
   </div>
@@ -280,192 +333,198 @@
 </div>
 
 <script>
-// 车型切换 → 显示/隐藏自定义字段
-document.getElementById('car_model').addEventListener('change', function() {
-  document.getElementById('custom-fields').style.display = this.value ? 'none' : 'block';
+// ============ 全局状态 ============
+var gAmap = null;
+var map = null;
+var startMarker = null;
+var endMarker = null;
+var currentMode = null;  // 'start' or 'end'
+var currentRouteId = '';
+var currentRouteData = null;
+var configLoaded = false;
+
+// ============ 初始化 ============
+window.addEventListener('DOMContentLoaded', async function() {
+  // 加载配置
+  try {
+    var resp = await fetch('/api/v1/config');
+    var config = await resp.json();
+    configLoaded = true;
+
+    if (config.amap_js_api_key) {
+      window._AMapSecurityConfig = {
+        securityJsCode: config.amap_js_security_code || ''
+      };
+      window.__onAmapReady = function() {
+        gAmap = window.AMap;
+        initMap();
+      };
+      var script = document.createElement('script');
+      script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady';
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  } catch (e) {
+    console.warn('Config load failed', e);
+  }
+
+  // 车型切换
+  document.getElementById('car_model').addEventListener('change', function() {
+    document.getElementById('custom-fields').style.display = this.value ? 'none' : 'block';
+  });
 });
 
-// 当前路线 ID（生成后记录）
-let currentRouteId = '';
-let currentRouteData = null;
+// ============ 地图初始化 ============
+function initMap() {
+  // 默认显示上海
+  map = new gAmap.Map('map-container', {
+    center: [121.5, 31.24],
+    zoom: 11,
+    mapStyle: 'amap://styles/dark',
+    resizeEnable: true,
+  });
 
-// ============ 创建路线 ============
-async function createRoute() {
-  const btn = document.getElementById('submit-btn');
-  const errorEl = document.getElementById('error');
-  const resultEl = document.getElementById('result');
-
-  btn.disabled = true; btn.textContent = '⏳ 生成中...';
-  errorEl.classList.remove('show');
-  resultEl.classList.remove('show');
-
-  const carModel = document.getElementById('car_model').value;
-  const body = {
-    city: document.getElementById('city').value.trim(),
-    start_lng: parseFloat(document.getElementById('start_lng').value),
-    start_lat: parseFloat(document.getElementById('start_lat').value),
-    end_lng: parseFloat(document.getElementById('end_lng').value),
-    end_lat: parseFloat(document.getElementById('end_lat').value),
-    car_model: carModel,
-    initial_soc: parseFloat(document.getElementById('initial_soc').value) || 100,
-    max_swaps: parseInt(document.getElementById('max_swaps').value) || 3,
-  };
-
-  if (!body.city || isNaN(body.start_lng)) {
-    showError('请填写完整的城市和坐标信息');
-    btn.disabled = false; btn.textContent = '⚡ 生成打卡路线';
-    return;
-  }
-
-  if (!carModel) {
-    body.battery_kwh = parseFloat(document.getElementById('battery_kwh').value) || 0;
-    body.consumption = parseFloat(document.getElementById('consumption').value) || 0;
-  }
-
-  try {
-    const resp = await fetch('/api/v1/route/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      showError(data.detail || '生成失败');
+  // 点击地图设置点
+  map.on('click', function(e) {
+    if (!currentMode) {
+      updateHint('请先点击上方"设置起点"或"设置终点"按钮');
       return;
     }
-
-    currentRouteId = data.route_id;
-    currentRouteData = data.data;
-
-    const shareUrl = window.location.origin + data.share_url;
-    document.getElementById('result-url').href = shareUrl;
-
-    // 显示摘要
-    const route = data.data.route || [];
-    document.getElementById('result-summary').textContent =
-      `${body.city} | ${data.data.car_model || '自定义'} | ${route.length} 个换电站 | ${data.data.total_distance || 0}km`;
-
-    // 统计
-    renderStats(data.data);
-
-    // 站点预览
-    renderStationPreview(route);
-
-    // 预填飞书 webhook
-    const feishuUrl = document.getElementById('feishu_webhook').value.trim();
-    if (feishuUrl) {
-      document.getElementById('feishu_result_webhook').value = feishuUrl;
-    }
-
-    resultEl.classList.add('show');
-    resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-  } catch (e) {
-    showError('网络请求失败: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⚡ 生成打卡路线';
-  }
-}
-
-function renderStats(data) {
-  const container = document.getElementById('result-stats');
-  const route = data.route || [];
-  container.innerHTML = `
-    <div class="result-stat"><div class="val">${data.total_distance || 0}</div><div class="lbl">总里程(km)</div></div>
-    <div class="result-stat"><div class="val">${route.length}</div><div class="lbl">换电次数</div></div>
-    <div class="result-stat"><div class="val">${data.unique_station_count || 0}</div><div class="lbl">站点数</div></div>
-    <div class="result-stat"><div class="val">${data.final_arrival_soc || 0}%</div><div class="lbl">终到SOC</div></div>
-  `;
-}
-
-function renderStationPreview(route) {
-  const container = document.getElementById('station-preview');
-  if (!route.length) { container.innerHTML = ''; return; }
-  container.innerHTML = '<div style="font-size:12px;color:#6b7d95;margin-bottom:6px;">📋 打卡顺序预览</div>' +
-    route.map((s, i) => `
-      <div class="station-preview-item">
-        <span class="num">${i + 1}</span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.station_name}</span>
-        <span class="soc">${s.arrival_soc}% → ${s.swap_soc}%</span>
-      </div>
-    `).join('');
-}
-
-// ============ 飞书分享 ============
-async function shareToFeishu() {
-  if (!currentRouteId) {
-    showError('请先生成路线');
-    return;
-  }
-
-  const webhookUrl = document.getElementById('feishu_result_webhook').value.trim();
-  if (!webhookUrl) {
-    const msgEl = document.getElementById('feishu-result');
-    msgEl.textContent = '请填写飞书 Webhook URL';
-    msgEl.classList.add('show');
-    setTimeout(() => msgEl.classList.remove('show'), 3000);
-    return;
-  }
-
-  const btn = document.querySelector('.feishu-input-row button');
-  const originalText = btn.textContent;
-  btn.textContent = '⏳ 发送中...';
-  btn.disabled = true;
-
-  try {
-    const resp = await fetch('/api/v1/route/share-to-feishu', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ route_id: currentRouteId, webhook_url: webhookUrl }),
-    });
-    const data = await resp.json();
-
-    const msgEl = document.getElementById('feishu-result');
-    if (resp.ok) {
-      msgEl.textContent = '✅ 飞书消息发送成功！';
-      msgEl.className = 'success-msg show';
+    var lng = e.lnglat.getLng();
+    var lat = e.lnglat.getLat();
+    if (currentMode === 'start') {
+      setStartPoint(lng, lat);
     } else {
-      msgEl.textContent = '❌ ' + (data.detail || '发送失败');
-      msgEl.className = 'success-msg show';
-      msgEl.style.color = '#ef5350';
+      setEndPoint(lng, lat);
     }
-    setTimeout(() => { msgEl.classList.remove('show'); msgEl.style.color = ''; }, 4000);
-  } catch (e) {
-    const msgEl = document.getElementById('feishu-result');
-    msgEl.textContent = '❌ 网络错误: ' + e.message;
-    msgEl.className = 'success-msg show';
-    msgEl.style.color = '#ef5350';
-    setTimeout(() => { msgEl.classList.remove('show'); msgEl.style.color = ''; }, 4000);
-  } finally {
-    btn.textContent = originalText;
-    btn.disabled = false;
+  });
+
+  updateHint('点击上方按钮选择设置模式，然后在地图上点选');
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('mode-start').className = 'map-mode-btn start' + (mode === 'start' ? ' active' : '');
+  document.getElementById('mode-end').className = 'map-mode-btn end' + (mode === 'end' ? ' active' : '');
+  updateHint(mode === 'start' ? '🟢 点击地图设置起点位置' : '🔴 点击地图设置终点位置');
+
+  // 改变鼠标样式
+  if (map && gAmap) {
+    var target = mode === 'start' ? 'start' : 'end';
+    map.setStatus({ defaultCursor: 'crosshair' });
   }
 }
 
-// ============ 定位功能 ============
-function locatePosition(target) {
+function clearPoints() {
+  currentMode = null;
+  document.getElementById('mode-start').className = 'map-mode-btn start';
+  document.getElementById('mode-end').className = 'map-mode-btn end';
+
+  if (startMarker && gAmap) { map.remove(startMarker); startMarker = null; }
+  if (endMarker && gAmap) { map.remove(endMarker); endMarker = null; }
+
+  document.getElementById('start_lng').value = '';
+  document.getElementById('start_lat').value = '';
+  document.getElementById('start_lng_display').value = '';
+  document.getElementById('start_lat_display').value = '';
+  document.getElementById('start_coord-display').textContent = '起点: 未设置';
+  document.getElementById('end_lng').value = '';
+  document.getElementById('end_lat').value = '';
+  document.getElementById('end_lng_display').value = '';
+  document.getElementById('end_lat_display').value = '';
+  document.getElementById('end_coord-display').textContent = '终点: 未设置';
+
+  if (map && gAmap) {
+    map.setStatus({ defaultCursor: '' });
+  }
+  updateHint('已清除所有标记，点击上方按钮重新设置');
+}
+
+function setStartPoint(lng, lat) {
+  // 更新隐藏字段
+  document.getElementById('start_lng').value = lng.toFixed(6);
+  document.getElementById('start_lat').value = lat.toFixed(6);
+  document.getElementById('start_lng_display').value = lng.toFixed(6);
+  document.getElementById('start_lat_display').value = lat.toFixed(6);
+  document.getElementById('start_coord-display').textContent = '起点: ' + lng.toFixed(4) + ', ' + lat.toFixed(4);
+
+  // 更新地图标记
+  if (!gAmap) return;
+  if (startMarker) { map.remove(startMarker); }
+
+  var content = '<div style="background:#4caf50;color:#fff;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.5);">起</div>';
+  startMarker = new gAmap.Marker({
+    position: [lng, lat],
+    content: content,
+    offset: new gAmap.Pixel(-18, -18),
+    zIndex: 100,
+  });
+  startMarker.setMap(map);
+  map.setCenter([lng, lat]);
+
+  updateHint('🟢 起点已设置！' + (document.getElementById('end_lng').value ? '' : ' 继续设置终点'));
+  currentMode = null;
+  document.getElementById('mode-start').className = 'map-mode-btn start';
+  document.getElementById('mode-end').className = 'map-mode-btn end';
+  map.setStatus({ defaultCursor: '' });
+}
+
+function setEndPoint(lng, lat) {
+  document.getElementById('end_lng').value = lng.toFixed(6);
+  document.getElementById('end_lat').value = lat.toFixed(6);
+  document.getElementById('end_lng_display').value = lng.toFixed(6);
+  document.getElementById('end_lat_display').value = lat.toFixed(6);
+  document.getElementById('end_coord-display').textContent = '终点: ' + lng.toFixed(4) + ', ' + lat.toFixed(4);
+
+  if (!gAmap) return;
+  if (endMarker) { map.remove(endMarker); }
+
+  var content = '<div style="background:#f44336;color:#fff;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.5);">终</div>';
+  endMarker = new gAmap.Marker({
+    position: [lng, lat],
+    content: content,
+    offset: new gAmap.Pixel(-18, -18),
+    zIndex: 100,
+  });
+  endMarker.setMap(map);
+  map.setCenter([lng, lat]);
+
+  updateHint('🔴 终点已设置！' + (document.getElementById('start_lng').value ? ' 现在可以生成路线了' : ' 继续设置起点'));
+  currentMode = null;
+  document.getElementById('mode-start').className = 'map-mode-btn start';
+  document.getElementById('mode-end').className = 'map-mode-btn end';
+  map.setStatus({ defaultCursor: '' });
+}
+
+function updateHint(msg) {
+  document.getElementById('map-hint').textContent = msg;
+}
+
+// ============ GPS定位 ============
+function locatePosition() {
   if (!navigator.geolocation) {
-    showError('浏览器不支持定位功能，请手动输入坐标');
+    showError('浏览器不支持定位功能');
     return;
   }
-
-  var btn = document.getElementById('locate-' + target);
+  var btn = document.getElementById('locate-btn');
   btn.textContent = '⏳ 定位中...';
   btn.classList.add('loading');
 
   navigator.geolocation.getCurrentPosition(
     function(pos) {
-      var lng = pos.coords.longitude.toFixed(6);
-      var lat = pos.coords.latitude.toFixed(6);
-      document.getElementById(target + '_lng').value = lng;
-      document.getElementById(target + '_lat').value = lat;
+      var lng = pos.coords.longitude;
+      var lat = pos.coords.latitude;
+      // 自动设为起点
+      setStartPoint(lng, lat);
+      // 如果地图还没初始化，先用高德API初始化
+      if (!gAmap) {
+        // 等待地图初始化
+      }
       btn.textContent = '✅ 已定位';
       btn.classList.remove('loading');
       btn.classList.add('done');
       setTimeout(function() {
-        btn.textContent = '📍 重定位';
+        btn.textContent = '📍 定位';
         btn.classList.remove('done');
       }, 3000);
     },
@@ -485,20 +544,181 @@ function locatePosition(target) {
   );
 }
 
+// ============ 创建路线 ============
+async function createRoute() {
+  var btn = document.getElementById('submit-btn');
+  var errorEl = document.getElementById('error');
+  var resultEl = document.getElementById('result');
+
+  btn.disabled = true; btn.textContent = '⏳ 生成中...';
+  errorEl.classList.remove('show');
+  resultEl.classList.remove('show');
+
+  var startLng = parseFloat(document.getElementById('start_lng').value);
+  var startLat = parseFloat(document.getElementById('start_lat').value);
+  var endLng = parseFloat(document.getElementById('end_lng').value);
+  var endLat = parseFloat(document.getElementById('end_lat').value);
+
+  if (!startLng || !startLat) {
+    showError('请在地图上点击设置起点');
+    btn.disabled = false; btn.textContent = '⚡ 生成打卡路线';
+    return;
+  }
+  if (!endLng || !endLat) {
+    showError('请在地图上点击设置终点');
+    btn.disabled = false; btn.textContent = '⚡ 生成打卡路线';
+    return;
+  }
+
+  var carModel = document.getElementById('car_model').value;
+  var body = {
+    city: document.getElementById('city').value.trim(),
+    start_lng: startLng,
+    start_lat: startLat,
+    end_lng: endLng,
+    end_lat: endLat,
+    car_model: carModel,
+    initial_soc: parseFloat(document.getElementById('initial_soc').value) || 100,
+    max_swaps: parseInt(document.getElementById('max_swaps').value) || 3,
+  };
+
+  if (!carModel) {
+    body.battery_kwh = parseFloat(document.getElementById('battery_kwh').value) || 0;
+    body.consumption = parseFloat(document.getElementById('consumption').value) || 0;
+  }
+
+  try {
+    var resp = await fetch('/api/v1/route/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    var data = await resp.json();
+
+    if (!resp.ok) {
+      showError(data.detail || '生成失败');
+      return;
+    }
+
+    currentRouteId = data.route_id;
+    currentRouteData = data.data;
+
+    var shareUrl = window.location.origin + data.share_url;
+    document.getElementById('result-url').href = shareUrl;
+
+    var route = data.data.route || [];
+    document.getElementById('result-summary').textContent =
+      body.city + ' | ' + (data.data.car_model || '自定义') + ' | ' + route.length + ' 个换电站 | ' + (data.data.total_distance || 0) + 'km';
+
+    renderStats(data.data);
+    renderStationPreview(route);
+
+    var feishuUrl = document.getElementById('feishu_webhook').value.trim();
+    if (feishuUrl) {
+      document.getElementById('feishu_result_webhook').value = feishuUrl;
+    }
+
+    resultEl.classList.add('show');
+    resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  } catch (e) {
+    showError('网络请求失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ 生成打卡路线';
+  }
+}
+
+function renderStats(data) {
+  var container = document.getElementById('result-stats');
+  var route = data.route || [];
+  container.innerHTML =
+    '<div class="result-stat"><div class="val">' + (data.total_distance || 0) + '</div><div class="lbl">总里程(km)</div></div>' +
+    '<div class="result-stat"><div class="val">' + route.length + '</div><div class="lbl">换电次数</div></div>' +
+    '<div class="result-stat"><div class="val">' + (data.unique_station_count || 0) + '</div><div class="lbl">站点数</div></div>' +
+    '<div class="result-stat"><div class="val">' + (data.final_arrival_soc || 0) + '%</div><div class="lbl">终到SOC</div></div>';
+}
+
+function renderStationPreview(route) {
+  var container = document.getElementById('station-preview');
+  if (!route.length) { container.innerHTML = ''; return; }
+  var html = '<div style="font-size:12px;color:#6b7d95;margin-bottom:6px;">📋 打卡顺序预览</div>';
+  for (var i = 0; i < route.length; i++) {
+    var s = route[i];
+    html +=
+      '<div class="station-preview-item">' +
+        '<span class="num">' + (i + 1) + '</span>' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + s.station_name + '</span>' +
+        '<span class="soc">' + s.arrival_soc + '% → ' + s.swap_soc + '%</span>' +
+      '</div>';
+  }
+  container.innerHTML = html;
+}
+
+// ============ 飞书分享 ============
+async function shareToFeishu() {
+  if (!currentRouteId) {
+    showError('请先生成路线');
+    return;
+  }
+  var webhookUrl = document.getElementById('feishu_result_webhook').value.trim();
+  if (!webhookUrl) {
+    var msgEl = document.getElementById('feishu-result');
+    msgEl.textContent = '请填写飞书 Webhook URL';
+    msgEl.className = 'success-msg show';
+    setTimeout(function() { msgEl.classList.remove('show'); }, 3000);
+    return;
+  }
+
+  var btn = document.querySelector('.feishu-input-row button');
+  var originalText = btn.textContent;
+  btn.textContent = '⏳ 发送中...';
+  btn.disabled = true;
+
+  try {
+    var resp = await fetch('/api/v1/route/share-to-feishu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ route_id: currentRouteId, webhook_url: webhookUrl }),
+    });
+    var data = await resp.json();
+
+    var msgEl = document.getElementById('feishu-result');
+    if (resp.ok) {
+      msgEl.textContent = '✅ 飞书消息发送成功！';
+      msgEl.className = 'success-msg show';
+    } else {
+      msgEl.textContent = '❌ ' + (data.detail || '发送失败');
+      msgEl.className = 'success-msg show';
+      msgEl.style.color = '#ef5350';
+    }
+    setTimeout(function() { msgEl.classList.remove('show'); msgEl.style.color = ''; }, 4000);
+  } catch (e) {
+    var msgEl = document.getElementById('feishu-result');
+    msgEl.textContent = '❌ 网络错误: ' + e.message;
+    msgEl.className = 'success-msg show';
+    msgEl.style.color = '#ef5350';
+    setTimeout(function() { msgEl.classList.remove('show'); msgEl.style.color = ''; }, 4000);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
 // ============ 工具 ============
 function showError(msg) {
-  const el = document.getElementById('error');
+  var el = document.getElementById('error');
   el.textContent = msg;
   el.classList.add('show');
 }
 
 async function copyLink() {
-  const url = document.getElementById('result-url').href;
+  var url = document.getElementById('result-url').href;
   try {
     await navigator.clipboard.writeText(url);
-    const btn = document.querySelector('.result-link button.ghost');
+    var btn = document.querySelector('.result-link button.ghost');
     btn.textContent = '✅ 已复制';
-    setTimeout(() => { btn.textContent = '📋 复制链接'; }, 2000);
+    setTimeout(function() { btn.textContent = '📋 复制链接'; }, 2000);
   } catch (_) {
     prompt('复制链接:', url);
   }
