@@ -242,14 +242,14 @@
       </div>
       <div class="map-hint" id="map-hint">点击地图设置起点（绿色）和终点（红色），或搜索地点</div>
     </div>
-    <div style="padding:12px;display:flex;gap:10px;">
-      <div class="coord-display" style="flex:1;">
+    <div style="padding:12px;display:flex;gap:10px;align-items:center;">
+      <div class="coord-display" style="flex:1;font-family:inherit;">
         <span class="dot start-dot"></span>
-        <span id="start-coord-display">起点: 未设置</span>
+        <span id="start-coord-display" style="font-family:inherit;">起点: 未设置</span>
       </div>
-      <div class="coord-display" style="flex:1;">
+      <div class="coord-display" style="flex:1;font-family:inherit;">
         <span class="dot end-dot"></span>
-        <span id="end-coord-display">终点: 未设置</span>
+        <span id="end-coord-display" style="font-family:inherit;">终点: 未设置</span>
       </div>
       <button class="locate-btn" onclick="locatePosition()" id="locate-btn" type="button">📍 定位</button>
     </div>
@@ -269,19 +269,17 @@
       <input type="text" id="city" placeholder="如 上海、北京、深圳（定位后自动识别）">
     </div>
     <div class="form-group">
-      <label>起点坐标</label>
-      <div style="display:flex;gap:6px;">
-        <input type="text" id="start_lng_display" placeholder="经度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
-        <input type="text" id="start_lat_display" placeholder="纬度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
-        <span style="font-size:11px;color:#4a5568;align-self:center;">← 点地图选</span>
+      <label>起点</label>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="text" id="start_name" placeholder="搜索或在地图上点击选择起点" readonly style="flex:1;background:#0a0e1a;color:#e0e6f0;cursor:pointer;" onclick="setMode('start')">
+        <span style="font-size:11px;color:#4a5568;">← 点击设置</span>
       </div>
     </div>
     <div class="form-group">
-      <label>终点坐标</label>
-      <div style="display:flex;gap:6px;">
-        <input type="text" id="end_lng_display" placeholder="经度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
-        <input type="text" id="end_lat_display" placeholder="纬度" readonly style="flex:1;background:#0a0e1a;color:#6b7d95;">
-        <span style="font-size:11px;color:#4a5568;align-self:center;">← 点地图选</span>
+      <label>终点</label>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="text" id="end_name" placeholder="搜索或在地图上点击选择终点" readonly style="flex:1;background:#0a0e1a;color:#e0e6f0;cursor:pointer;" onclick="setMode('end')">
+        <span style="font-size:11px;color:#4a5568;">← 点击设置</span>
       </div>
     </div>
   </div>
@@ -460,28 +458,28 @@ function clearPoints() {
 
   document.getElementById('start_lng').value = '';
   document.getElementById('start_lat').value = '';
-  document.getElementById('start_lng_display').value = '';
-  document.getElementById('start_lat_display').value = '';
+  document.getElementById('start_name').value = '';
   document.getElementById('start_coord-display').textContent = '起点: 未设置';
   document.getElementById('end_lng').value = '';
   document.getElementById('end_lat').value = '';
-  document.getElementById('end_lng_display').value = '';
-  document.getElementById('end_lat_display').value = '';
+  document.getElementById('end_name').value = '';
   document.getElementById('end_coord-display').textContent = '终点: 未设置';
 
   if (map && gAmap) {
     map.setStatus({ defaultCursor: '' });
   }
-  updateHint('已清除所有标记，点击上方按钮重新设置');
+  updateHint('已清除所有标记，搜索或点击地图重新设置');
 }
 
-function setStartPoint(lng, lat) {
+function setStartPoint(lng, lat, name) {
   // 更新隐藏字段
   document.getElementById('start_lng').value = lng.toFixed(6);
   document.getElementById('start_lat').value = lat.toFixed(6);
-  document.getElementById('start_lng_display').value = lng.toFixed(6);
-  document.getElementById('start_lat_display').value = lat.toFixed(6);
-  document.getElementById('start_coord-display').textContent = '起点: ' + lng.toFixed(4) + ', ' + lat.toFixed(4);
+
+  // 显示地点名称
+  var displayName = name || ('起点 (' + lng.toFixed(4) + ', ' + lat.toFixed(4) + ')');
+  document.getElementById('start_name').value = displayName;
+  document.getElementById('start_coord-display').textContent = '起点: ' + (name || '已设置');
 
   // 更新地图标记
   if (!gAmap) return;
@@ -504,12 +502,13 @@ function setStartPoint(lng, lat) {
   map.setStatus({ defaultCursor: '' });
 }
 
-function setEndPoint(lng, lat) {
+function setEndPoint(lng, lat, name) {
   document.getElementById('end_lng').value = lng.toFixed(6);
   document.getElementById('end_lat').value = lat.toFixed(6);
-  document.getElementById('end_lng_display').value = lng.toFixed(6);
-  document.getElementById('end_lat_display').value = lat.toFixed(6);
-  document.getElementById('end_coord-display').textContent = '终点: ' + lng.toFixed(4) + ', ' + lat.toFixed(4);
+
+  var displayName = name || ('终点 (' + lng.toFixed(4) + ', ' + lat.toFixed(4) + ')');
+  document.getElementById('end_name').value = displayName;
+  document.getElementById('end_coord-display').textContent = '终点: ' + (name || '已设置');
 
   if (!gAmap) return;
   if (endMarker) { map.remove(endMarker); }
@@ -587,23 +586,21 @@ function selectSearchResult(index) {
   var poi = pois[index];
   var lng = poi.location.lng || poi.location.getLng();
   var lat = poi.location.lat || poi.location.getLat();
+  var name = poi.name;
 
   document.getElementById('search-results').classList.remove('show');
   document.getElementById('search-input').value = '';
 
   if (!currentMode) {
-    // 默认设为起点
-    setStartPoint(lng, lat);
-    updateHint('已从搜索结果设置起点: ' + poi.name + '。如需设置终点，请点击"设置终点"');
+    setStartPoint(lng, lat, name);
+    updateHint('已设置起点: ' + name + '。如需设置终点，请点击"设置终点"');
     return;
   }
 
   if (currentMode === 'start') {
-    setStartPoint(lng, lat);
-    updateHint('已从搜索结果设置起点: ' + poi.name);
+    setStartPoint(lng, lat, name);
   } else {
-    setEndPoint(lng, lat);
-    updateHint('已从搜索结果设置终点: ' + poi.name);
+    setEndPoint(lng, lat, name);
   }
 }
 
@@ -628,7 +625,7 @@ function locatePosition() {
     function(pos) {
       var lng = pos.coords.longitude;
       var lat = pos.coords.latitude;
-      setStartPoint(lng, lat);
+      setStartPoint(lng, lat, '我的位置');
 
       // 自动识别城市（逆地理编码）
       if (gAmap) {
@@ -687,12 +684,12 @@ async function createRoute() {
   var endLat = parseFloat(document.getElementById('end_lat').value);
 
   if (!startLng || !startLat) {
-    showError('请在地图上点击设置起点');
+    showError('请设置起点（搜索地点或点击地图）');
     btn.disabled = false; btn.textContent = '⚡ 生成打卡路线';
     return;
   }
   if (!endLng || !endLat) {
-    showError('请在地图上点击设置终点');
+    showError('请设置终点（搜索地点或点击地图）');
     btn.disabled = false; btn.textContent = '⚡ 生成打卡路线';
     return;
   }
