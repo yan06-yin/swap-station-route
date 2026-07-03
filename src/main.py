@@ -88,16 +88,32 @@ async def get_config():
 @app.post("/api/v1/route/create", response_model=RouteResponse)
 async def create_route(req: RouteRequest):
     """创建打卡路线"""
-    # 1. 搜索换电站
-    try:
-        stations = await search_swap_stations(req.city)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"换电站检索失败: {str(e)}")
+    # 1. 搜索换电站（多城市搜索）
+    cities_to_search = [req.city]
+    # 如果终点城市不同，也搜一下
+    if req.city and req.end_name and req.end_name != req.city:
+        cities_to_search.append(req.end_name)
+
+    all_stations = []
+    for city in cities_to_search:
+        try:
+            stations = await search_swap_stations(city)
+            all_stations.extend(stations)
+        except Exception:
+            pass
+
+    # 去重（按名称）
+    seen_names = set()
+    stations = []
+    for s in all_stations:
+        if s["name"] not in seen_names:
+            seen_names.add(s["name"])
+            stations.append(s)
 
     if not stations:
         raise HTTPException(
             status_code=404,
-            detail=f"在城市 '{req.city}' 中未找到换电站，"
+            detail=f"在城市 '{req.city}' 及附近未找到换电站，"
             "请检查城市名称或高德 API 配置",
         )
 
