@@ -114,6 +114,30 @@ def generate_risks(segments: list[dict]) -> list[dict]:
             "message": f"全程有 {low_soc_count} 段到站 SOC 低于 20%, 建议适当增加换电次数或降低能耗",
         })
 
+    # 超长单段（换电次数不够）
+    max_seg = max((s["distance"] for s in segments), default=0)
+    if max_seg > 250:
+        risks.append({
+            "level": "warning",
+            "segment": 0,
+            "message": f"最长一段达 {max_seg:.0f}km，建议增加换电次数，避免续航不足",
+        })
+    elif max_seg > 300:
+        risks.append({
+            "level": "danger",
+            "segment": 0,
+            "message": f"最长一段达 {max_seg:.0f}km，单段过远，强烈建议增加换电次数",
+        })
+
+    # 全程长但换电少
+    seg_count = len(segments)
+    if total_distance > 400 and seg_count <= 3:
+        risks.append({
+            "level": "info",
+            "segment": 0,
+            "message": f"全程 {total_distance:.0f}km 仅 {seg_count} 段，建议适当增加换电次数确保续航",
+        })
+
     return risks
 
 

@@ -351,8 +351,8 @@ function renderStations(route) {
         '</div>' +
         '<div class="soc-bar"><div class="fill ' + socClass + '" style="width:' + s.arrival_soc + '%"></div></div>' +
         '<div class="nav-btns">' +
-          '<a class="nav-btn amap" href="' + amapUrl + '" target="_blank" rel="noopener">🗺️ 高德导航</a>' +
-          '<a class="nav-btn baidu" href="' + baiduUrl + '" target="_blank" rel="noopener">🗺️ 百度导航</a>' +
+          '<a class="nav-btn amap" href="' + amapUrl + '" target="_blank" rel="noopener">🗺️ 导航到此站</a>' +
+          '<a class="nav-btn baidu" href="' + baiduUrl + '" target="_blank" rel="noopener">🗺️ 百度地图</a>' +
         '</div>' +
       '</div>';
   }
@@ -631,21 +631,9 @@ function startDrive() {
   var route = routeData.route || [];
   if (!route.length) return;
 
-  var startName = encodeURIComponent(routeParams.start_name || '起点');
-  var endName = encodeURIComponent(routeParams.end_name || route[route.length - 1].station_name);
-
-  // 使用高德路线规划（支持多途经点）
-  // 格式: https://www.amap.com/dir?type=car&from=...&to=...&mid=...
-  var url = 'https://www.amap.com/dir?type=car'
-    + '&from=' + routeParams.start_lng + ',' + routeParams.start_lat + ',' + startName
-    + '&to=' + route[route.length - 1].lng + ',' + route[route.length - 1].lat + ',' + endName;
-
-  // 中间站点作为途经点（编号 1,2,3...）
-  for (var i = 0; i < route.length - 1; i++) {
-    var s = route[i];
-    url += '&mid=' + (i + 1) + ',' + s.lng + ',' + s.lat + ',' + encodeURIComponent(s.station_name);
-  }
-
+  // 高德导航到第一个换电站（启动 GPS 导航）
+  var first = route[0];
+  var url = 'https://uri.amap.com/navigation?to=' + first.lng + ',' + first.lat + ',' + encodeURIComponent(first.station_name) + '&mode=car';
   window.location.href = url;
 }
 
