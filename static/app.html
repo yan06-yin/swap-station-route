@@ -62,6 +62,37 @@
   .form-row .form-group { flex: 1; }
 
   .coords-hint { font-size: 11px; color: #4a5568; margin-top: 4px; }
+
+  /* 搜索框 */
+  .search-box {
+    position: absolute; top: 50px; left: 10px; right: 10px; z-index: 100;
+  }
+  .search-box input {
+    width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(100,180,255,0.2);
+    background: rgba(15,21,37,0.92); backdrop-filter: blur(8px);
+    color: #e0e6f0; font-size: 14px; outline: none;
+  }
+  .search-box input:focus { border-color: #4fc3f7; }
+  .search-box input::placeholder { color: #4a5568; }
+  .search-results {
+    position: absolute; top: 44px; left: 0; right: 0; z-index: 101;
+    background: #1a2340; border: 1px solid rgba(100,180,255,0.15);
+    border-radius: 0 0 8px 8px; max-height: 200px; overflow-y: auto;
+    display: none;
+  }
+  .search-results.show { display: block; }
+  .search-item {
+    padding: 10px 14px; cursor: pointer; font-size: 13px; color: #e0e6f0;
+    border-bottom: 1px solid rgba(100,180,255,0.05); transition: background 0.15s;
+  }
+  .search-item:last-child { border: none; }
+  .search-item:hover { background: rgba(79,195,247,0.1); }
+  .search-item .addr { font-size: 11px; color: #6b7d95; margin-top: 2px; }
+  .search-item .tag {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    background: rgba(79,195,247,0.15); color: #4fc3f7; font-size: 10px; margin-right: 6px;
+  }
+
   .coord-display {
     display: flex; align-items: center; gap: 8px; padding: 6px 10px;
     background: #0f1525; border-radius: 6px; border: 1px solid rgba(100,180,255,0.1);
@@ -205,7 +236,11 @@
           <span class="icon">🗑️</span> 清除
         </div>
       </div>
-      <div class="map-hint" id="map-hint">点击地图设置起点（绿色）和终点（红色）</div>
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="🔍 搜索地点，如 上海虹桥火车站、南京西路" oninput="searchPlace(this.value)">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="map-hint" id="map-hint">点击地图设置起点（绿色）和终点（红色），或搜索地点</div>
     </div>
     <div style="padding:12px;display:flex;gap:10px;">
       <div class="coord-display" style="flex:1;">
@@ -360,7 +395,7 @@ window.addEventListener('DOMContentLoaded', async function() {
         initMap();
       };
       var script = document.createElement('script');
-      script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady';
+      script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady&plugin=AMap.PlaceSearch,AMap.AutoComplete';
       script.async = true;
       document.head.appendChild(script);
     }
@@ -499,6 +534,85 @@ function setEndPoint(lng, lat) {
 function updateHint(msg) {
   document.getElementById('map-hint').textContent = msg;
 }
+
+// ============ 地点搜索 ============
+var searchTimer = null;
+var placeSearch = null;
+
+function searchPlace(keyword) {
+  if (!gAmap || !keyword || keyword.length < 2) {
+    document.getElementById('search-results').classList.remove('show');
+    return;
+  }
+
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function() {
+    if (!placeSearch) {
+      placeSearch = new gAmap.PlaceSearch({
+        city: document.getElementById('city').value.trim() || '上海',
+        pageSize: 6,
+        pageIndex: 1,
+      });
+    }
+
+    placeSearch.search(keyword, function(status, result) {
+      var container = document.getElementById('search-results');
+      if (status !== 'complete' || !result.poiList || !result.poiList.pois.length) {
+        container.classList.remove('show');
+        return;
+      }
+
+      var pois = result.poiList.pois.slice(0, 6);
+      var html = '';
+      for (var i = 0; i < pois.length; i++) {
+        var p = pois[i];
+        var type = (p.type || '').split('|')[0] || '地点';
+        html +=
+          '<div class="search-item" onclick="selectSearchResult(' + i + ')">' +
+            '<span class="tag">' + type + '</span>' + p.name +
+            (p.address ? '<div class="addr">' + p.address + '</div>' : '') +
+          '</div>';
+      }
+      // 保存结果供 select 使用
+      window.__searchResults = pois;
+      container.innerHTML = html;
+      container.classList.add('show');
+    });
+  }, 300);
+}
+
+function selectSearchResult(index) {
+  var pois = window.__searchResults;
+  if (!pois || index >= pois.length) return;
+  var poi = pois[index];
+  var lng = poi.location.lng || poi.location.getLng();
+  var lat = poi.location.lat || poi.location.getLat();
+
+  document.getElementById('search-results').classList.remove('show');
+  document.getElementById('search-input').value = '';
+
+  if (!currentMode) {
+    // 默认设为起点
+    setStartPoint(lng, lat);
+    updateHint('已从搜索结果设置起点: ' + poi.name + '。如需设置终点，请点击"设置终点"');
+    return;
+  }
+
+  if (currentMode === 'start') {
+    setStartPoint(lng, lat);
+    updateHint('已从搜索结果设置起点: ' + poi.name);
+  } else {
+    setEndPoint(lng, lat);
+    updateHint('已从搜索结果设置终点: ' + poi.name);
+  }
+}
+
+// 点击搜索框外部关闭结果
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.search-box')) {
+    document.getElementById('search-results').classList.remove('show');
+  }
+});
 
 // ============ GPS定位 ============
 function locatePosition() {
