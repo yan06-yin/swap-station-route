@@ -108,6 +108,56 @@ async def get_driving_route(
     }
 
 
+async def get_full_route_with_waypoints(
+    origin: tuple[float, float],
+    destination: tuple[float, float],
+    waypoints: list[tuple[float, float]],
+) -> dict[str, Any]:
+    """
+    获取含途经点的完整驾车路线
+
+    将多个换电站作为途经点，返回一条完整路线折线
+    Returns: {distance(米), duration(秒), polyline}
+    """
+    if not waypoints:
+        return await get_driving_route(origin, destination)
+
+    key = await get_amap_key()
+    url = "https://restapi.amap.com/v5/direction/driving"
+
+    # 途经点格式：lng1,lat1;lng2,lat2
+    wp_str = ";".join(f"{lng},{lat}" for lng, lat in waypoints)
+
+    params = {
+        "origin": f"{origin[0]},{origin[1]}",
+        "destination": f"{destination[0]},{destination[1]}",
+        "waypoints": wp_str,
+        "key": key,
+        "strategy": "0",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url, params=params)
+            data = resp.json()
+    except Exception:
+        return {"distance": 0, "duration": 0, "polyline": ""}
+
+    if data.get("status") != "1":
+        return {"distance": 0, "duration": 0, "polyline": ""}
+
+    route = data.get("route", {})
+    paths = route.get("paths", [])
+    if not paths:
+        return {"distance": 0, "duration": 0, "polyline": ""}
+
+    path = paths[0]
+    return {
+        "distance": int(path.get("distance", 0)),
+        "duration": int(path.get("duration", 0)),
+        "polyline": path.get("polyline", ""),
+    }
+
+
 # ============ 逆地理编码（坐标→城市） ============
 
 

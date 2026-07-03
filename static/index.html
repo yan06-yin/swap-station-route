@@ -483,8 +483,25 @@ function addStationMarkers(route) {
 function addRoutePolyline(points) {
   if (!points || points.length < 2) return;
 
+  var path = points;
+
+  // 优先使用完整路线折线（真实道路路径）
+  if (routeData.full_polyline) {
+    var parsed = [];
+    var segments = routeData.full_polyline.split(';');
+    for (var i = 0; i < segments.length; i++) {
+      var parts = segments[i].split(',');
+      if (parts.length === 2) {
+        parsed.push([parseFloat(parts[0]), parseFloat(parts[1])]);
+      }
+    }
+    if (parsed.length > 2) {
+      path = parsed;
+    }
+  }
+
   polyline = new gAmap.Polyline({
-    path: points,
+    path: path,
     strokeColor: '#4fc3f7',
     strokeWeight: 4,
     strokeOpacity: 0.8,

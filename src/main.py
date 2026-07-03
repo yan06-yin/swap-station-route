@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from src.amap_client import (
     discover_cities_along_route,
     get_driving_route,
+    get_full_route_with_waypoints,
     get_js_api_key,
     get_js_security_code,
     search_swap_stations,
@@ -247,6 +248,17 @@ async def _enrich_with_real_distances(result: dict, params: dict) -> None:
     # 重新生成风险提示（使用真实距离）
     from src.route_planner import generate_risks
     result["risks"] = generate_risks(segments)
+
+    # 获取完整路线折线（含所有途经点，用于地图绘制）
+    try:
+        waypoints = [(s["lng"], s["lat"]) for s in route]
+        full_route = await get_full_route_with_waypoints(start, end, waypoints)
+        if full_route.get("polyline"):
+            result["full_polyline"] = full_route["polyline"]
+            result["full_route_distance"] = round(full_route["distance"] / 1000, 1)
+            result["full_route_duration"] = full_route["duration"]
+    except Exception:
+        pass
 
 
 def _recalc_final_soc(
