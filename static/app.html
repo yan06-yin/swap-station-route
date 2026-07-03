@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>换电站打卡路线规划 — 企业端</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #0a0e1a; color: #e0e6f0; min-height: 100vh; }
+  .container { max-width: 600px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  .logo { text-align: center; padding: 30px 0 20px; }
+  .logo h1 { font-size: 22px; color: #fff; }
+  .logo p { font-size: 13px; color: #6b7d95; margin-top: 6px; }
+
+  .card {
+    background: linear-gradient(135deg, #141b2d, #1a2340);
+    border-radius: 14px; padding: 20px; margin-bottom: 14px;
+    border: 1px solid rgba(100,180,255,0.1);
+  }
+  .card-title { font-size: 14px; font-weight: 600; color: #4fc3f7; margin-bottom: 16px; display: flex; align-items: center; gap: 6px; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group:last-child { margin-bottom: 0; }
+  .form-group label { display: block; font-size: 12px; color: #6b7d95; margin-bottom: 6px; }
+  .form-group input, .form-group select {
+    width: 100%; padding: 10px 14px; border-radius: 8px;
+    background: #0f1525; border: 1px solid rgba(100,180,255,0.15);
+    color: #e0e6f0; font-size: 14px; outline: none; transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: #4fc3f7; }
+  .form-group input::placeholder { color: #3a4a5a; }
+  .form-row { display: flex; gap: 10px; }
+  .form-row .form-group { flex: 1; }
+  .coords-hint { font-size: 11px; color: #4a5568; margin-top: 4px; }
+
+  .btn-submit {
+    width: 100%; padding: 14px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, #4fc3f7, #0288d1);
+    color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 6px;
+    transition: opacity 0.2s;
+  }
+  .btn-submit:hover { opacity: 0.9; }
+  .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-secondary {
+    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid rgba(79,195,247,0.2);
+    background: rgba(79,195,247,0.1); color: #4fc3f7;
+    font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px;
+    transition: opacity 0.2s;
+  }
+  .btn-secondary:hover { opacity: 0.85; }
+
+  .result-box {
+    display: none; background: #0f1525; border-radius: 12px;
+    padding: 16px; margin-top: 14px; border: 1px solid rgba(79,195,247,0.2);
+  }
+  .result-box.show { display: block; }
+
+  .result-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .result-header .icon { font-size: 24px; }
+  .result-header .info { flex: 1; }
+  .result-header .info h3 { font-size: 15px; color: #4caf50; }
+  .result-header .info p { font-size: 12px; color: #6b7d95; margin-top: 2px; }
+
+  .result-stats { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .result-stat {
+    flex: 1; min-width: 70px; background: rgba(79,195,247,0.06);
+    border-radius: 8px; padding: 8px 10px; text-align: center;
+    border: 1px solid rgba(79,195,247,0.1);
+  }
+  .result-stat .val { font-size: 16px; font-weight: 700; color: #4fc3f7; }
+  .result-stat .lbl { font-size: 10px; color: #6b7d95; margin-top: 2px; }
+
+  .result-link {
+    display: flex; gap: 8px; margin-top: 10px;
+  }
+  .result-link a, .result-link button {
+    flex: 1; padding: 10px; border-radius: 8px; text-align: center;
+    font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none;
+    border: none;
+  }
+  .result-link a.primary, .result-link button.primary {
+    background: #4fc3f7; color: #0a0e1a; font-weight: 600;
+  }
+  .result-link a.ghost, .result-link button.ghost {
+    background: rgba(79,195,247,0.1); border: 1px solid rgba(79,195,247,0.2);
+    color: #4fc3f7;
+  }
+  .result-link button.feishu {
+    background: rgba(50,100,255,0.15); border: 1px solid rgba(50,100,255,0.3);
+    color: #4a6cf7;
+  }
+
+  .feishu-section { margin-top: 12px; }
+  .feishu-section label { font-size: 12px; color: #6b7d95; margin-bottom: 6px; display: block; }
+  .feishu-input-row { display: flex; gap: 8px; }
+  .feishu-input-row input { flex: 1; }
+  .feishu-input-row button {
+    padding: 10px 16px; border-radius: 8px; border: 1px solid rgba(50,100,255,0.3);
+    background: rgba(50,100,255,0.15); color: #4a6cf7;
+    font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+
+  .error-msg {
+    background: rgba(239,83,80,0.1); border: 1px solid rgba(239,83,80,0.2);
+    border-radius: 8px; padding: 12px; color: #ef5350;
+    font-size: 13px; margin-top: 14px; display: none;
+  }
+  .error-msg.show { display: block; }
+
+  .success-msg {
+    background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.2);
+    border-radius: 8px; padding: 12px; color: #66bb6a;
+    font-size: 13px; margin-top: 8px; display: none;
+  }
+  .success-msg.show { display: block; }
+
+  .locate-btn {
+    padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(79,195,247,0.3);
+    background: rgba(79,195,247,0.1); color: #4fc3f7;
+    font-size: 12px; cursor: pointer; white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .locate-btn:hover { background: rgba(79,195,247,0.2); }
+  .locate-btn.loading { opacity: 0.6; pointer-events: none; }
+  .locate-btn.done { border-color: #4caf50; color: #4caf50; }
+
+  .demo-link { text-align: center; margin-top: 16px; }
+  .demo-link a { color: #4fc3f7; font-size: 13px; text-decoration: none; }
+  .demo-link a { color: #4fc3f7; font-size: 13px; text-decoration: none; }
+
+  .section-divider { height: 1px; background: rgba(100,180,255,0.08); margin: 16px 0; }
+
+  .station-preview { margin-top: 12px; }
+  .station-preview-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0; font-size: 12px; color: #8899aa;
+    border-bottom: 1px solid rgba(100,180,255,0.05);
+  }
+  .station-preview-item .num {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #4fc3f7; color: #0a0e1a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+  }
+  .station-preview-item .soc { color: #4fc3f7; font-weight: 600; margin-left: auto; }
+
+  @media (max-width: 380px) {
+    .result-stats { gap: 4px; }
+    .result-stat { padding: 6px 8px; }
+    .result-stat .val { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="logo">
+    <h1>⚡ 换电站打卡路线规划</h1>
+    <p>企业端 — 生成最优换电站打卡路线</p>
+  </div>
+
+  <!-- 路线参数 -->
+  <div class="card">
+    <div class="card-title">📍 路线信息</div>
+    <div class="form-group">
+      <label>城市</label>
+      <input type="text" id="city" placeholder="如 上海、北京、深圳" value="上海">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>起点 经度</label>
+        <div style="display:flex;gap:6px;">
+          <input type="number" step="0.000001" id="start_lng" placeholder="121.500" value="121.500" style="flex:1;">
+          <button class="locate-btn" onclick="locatePosition('start')" id="locate-start" type="button">📍 定位</button>
+        </div>
+        <div class="coords-hint">高德坐标系 GCJ-02</div>
+      </div>
+      <div class="form-group">
+        <label>起点 纬度</label>
+        <input type="number" step="0.000001" id="start_lat" placeholder="31.240" value="31.240">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>终点 经度</label>
+        <div style="display:flex;gap:6px;">
+          <input type="number" step="0.000001" id="end_lng" placeholder="121.395" value="121.395" style="flex:1;">
+          <button class="locate-btn" onclick="locatePosition('end')" id="locate-end" type="button">📍 定位</button>
+        </div>
+        <div class="coords-hint">也可用定位按钮获取</div>
+      </div>
+      <div class="form-group">
+        <label>终点 纬度</label>
+        <input type="number" step="0.000001" id="end_lat" placeholder="31.195" value="31.195">
+      </div>
+    </div>
+  </div>
+
+  <!-- 车辆参数 -->
+  <div class="card">
+    <div class="card-title">🚗 车辆信息</div>
+    <div class="form-group">
+      <label>车型</label>
+      <select id="car_model">
+        <option value="">自定义（手动填能耗）</option>
+        <optgroup label="蔚来">
+          <option value="蔚来-ET5" selected>蔚来 ET5</option>
+          <option value="蔚来-ET5T">蔚来 ET5T</option>
+          <option value="蔚来-ET7">蔚来 ET7</option>
+          <option value="蔚来-ES6">蔚来 ES6</option>
+          <option value="蔚来-ES7">蔚来 ES7</option>
+          <option value="蔚来-ES8">蔚来 ES8</option>
+          <option value="蔚来-EC6">蔚来 EC6</option>
+          <option value="蔚来-EC7">蔚来 EC7</option>
+        </optgroup>
+        <optgroup label="小鹏">
+          <option value="小鹏-G6">小鹏 G6</option>
+          <option value="小鹏-G9">小鹏 G9</option>
+          <option value="小鹏-P7i">小鹏 P7i</option>
+        </optgroup>
+        <optgroup label="极氪">
+          <option value="极氪-001">极氪 001</option>
+          <option value="极氪-X">极氪 X</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>出发 SOC (%)</label><input type="number" id="initial_soc" min="0" max="100" value="100"></div>
+      <div class="form-group"><label>最多换电次数</label><input type="number" id="max_swaps" min="1" max="10" value="3"></div>
+    </div>
+    <div class="form-group" id="custom-fields" style="display:none;">
+      <div class="form-row">
+        <div class="form-group"><label>电池容量 (kWh)</label><input type="number" id="battery_kwh" placeholder="75"></div>
+        <div class="form-group"><label>百公里能耗 (kWh)</label><input type="number" step="0.1" id="consumption" placeholder="13.5"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 飞书配置 -->
+  <div class="card">
+    <div class="card-title">💬 飞书推送（可选）</div>
+    <div class="form-group">
+      <label>飞书机器人 Webhook URL</label>
+      <input type="url" id="feishu_webhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" value="">
+      <div class="coords-hint">在飞书群中添加自定义机器人获取</div>
+    </div>
+  </div>
+
+  <button class="btn-submit" id="submit-btn" onclick="createRoute()">⚡ 生成打卡路线</button>
+  <div class="error-msg" id="error"></div>
+
+  <!-- 结果 -->
+  <div class="result-box" id="result">
+    <div class="result-header">
+      <div class="icon">✅</div>
+      <div class="info">
+        <h3>路线生成成功！</h3>
+        <p id="result-summary">加载中...</p>
+      </div>
+    </div>
+    <div class="result-stats" id="result-stats"></div>
+    <div class="station-preview" id="station-preview"></div>
+    <div class="section-divider"></div>
+    <div class="result-link">
+      <a href="#" id="result-url" class="primary" target="_blank">🗺️ 打开路线</a>
+      <button class="ghost" onclick="copyLink()">📋 复制链接</button>
+    </div>
+    <div class="feishu-section">
+      <div class="feishu-input-row">
+        <input type="url" id="feishu_result_webhook" placeholder="飞书 Webhook URL（可选）">
+        <button onclick="shareToFeishu()">💬 发飞书</button>
+      </div>
+      <div class="success-msg" id="feishu-result"></div>
+    </div>
+  </div>
+
+  <div class="demo-link"><a href="/share/demo" target="_blank">👀 查看演示路线（无需 API Key）</a></div>
+</div>
+
+<script>
+// 车型切换 → 显示/隐藏自定义字段
+document.getElementById('car_model').addEventListener('change', function() {
+  document.getElementById('custom-fields').style.display = this.value ? 'none' : 'block';
+});
+
+// 当前路线 ID（生成后记录）
+let currentRouteId = '';
+let currentRouteData = null;
+
+// ============ 创建路线 ============
+async function createRoute() {
+  const btn = document.getElementById('submit-btn');
+  const errorEl = document.getElementById('error');
+  const resultEl = document.getElementById('result');
+
+  btn.disabled = true; btn.textContent = '⏳ 生成中...';
+  errorEl.classList.remove('show');
+  resultEl.classList.remove('show');
+
+  const carModel = document.getElementById('car_model').value;
+  const body = {
+    city: document.getElementById('city').value.trim(),
+    start_lng: parseFloat(document.getElementById('start_lng').value),
+    start_lat: parseFloat(document.getElementById('start_lat').value),
+    end_lng: parseFloat(document.getElementById('end_lng').value),
+    end_lat: parseFloat(document.getElementById('end_lat').value),
+    car_model: carModel,
+    initial_soc: parseFloat(document.getElementById('initial_soc').value) || 100,
+    max_swaps: parseInt(document.getElementById('max_swaps').value) || 3,
+  };
+
+  if (!body.city || isNaN(body.start_lng)) {
+    showError('请填写完整的城市和坐标信息');
+    btn.disabled = false; btn.textContent = '⚡ 生成打卡路线';
+    return;
+  }
+
+  if (!carModel) {
+    body.battery_kwh = parseFloat(document.getElementById('battery_kwh').value) || 0;
+    body.consumption = parseFloat(document.getElementById('consumption').value) || 0;
+  }
+
+  try {
+    const resp = await fetch('/api/v1/route/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      showError(data.detail || '生成失败');
+      return;
+    }
+
+    currentRouteId = data.route_id;
+    currentRouteData = data.data;
+
+    const shareUrl = window.location.origin + data.share_url;
+    document.getElementById('result-url').href = shareUrl;
+
+    // 显示摘要
+    const route = data.data.route || [];
+    document.getElementById('result-summary').textContent =
+      `${body.city} | ${data.data.car_model || '自定义'} | ${route.length} 个换电站 | ${data.data.total_distance || 0}km`;
+
+    // 统计
+    renderStats(data.data);
+
+    // 站点预览
+    renderStationPreview(route);
+
+    // 预填飞书 webhook
+    const feishuUrl = document.getElementById('feishu_webhook').value.trim();
+    if (feishuUrl) {
+      document.getElementById('feishu_result_webhook').value = feishuUrl;
+    }
+
+    resultEl.classList.add('show');
+    resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  } catch (e) {
+    showError('网络请求失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ 生成打卡路线';
+  }
+}
+
+function renderStats(data) {
+  const container = document.getElementById('result-stats');
+  const route = data.route || [];
+  container.innerHTML = `
+    <div class="result-stat"><div class="val">${data.total_distance || 0}</div><div class="lbl">总里程(km)</div></div>
+    <div class="result-stat"><div class="val">${route.length}</div><div class="lbl">换电次数</div></div>
+    <div class="result-stat"><div class="val">${data.unique_station_count || 0}</div><div class="lbl">站点数</div></div>
+    <div class="result-stat"><div class="val">${data.final_arrival_soc || 0}%</div><div class="lbl">终到SOC</div></div>
+  `;
+}
+
+function renderStationPreview(route) {
+  const container = document.getElementById('station-preview');
+  if (!route.length) { container.innerHTML = ''; return; }
+  container.innerHTML = '<div style="font-size:12px;color:#6b7d95;margin-bottom:6px;">📋 打卡顺序预览</div>' +
+    route.map((s, i) => `
+      <div class="station-preview-item">
+        <span class="num">${i + 1}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.station_name}</span>
+        <span class="soc">${s.arrival_soc}% → ${s.swap_soc}%</span>
+      </div>
+    `).join('');
+}
+
+// ============ 飞书分享 ============
+async function shareToFeishu() {
+  if (!currentRouteId) {
+    showError('请先生成路线');
+    return;
+  }
+
+  const webhookUrl = document.getElementById('feishu_result_webhook').value.trim();
+  if (!webhookUrl) {
+    const msgEl = document.getElementById('feishu-result');
+    msgEl.textContent = '请填写飞书 Webhook URL';
+    msgEl.classList.add('show');
+    setTimeout(() => msgEl.classList.remove('show'), 3000);
+    return;
+  }
+
+  const btn = document.querySelector('.feishu-input-row button');
+  const originalText = btn.textContent;
+  btn.textContent = '⏳ 发送中...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch('/api/v1/route/share-to-feishu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ route_id: currentRouteId, webhook_url: webhookUrl }),
+    });
+    const data = await resp.json();
+
+    const msgEl = document.getElementById('feishu-result');
+    if (resp.ok) {
+      msgEl.textContent = '✅ 飞书消息发送成功！';
+      msgEl.className = 'success-msg show';
+    } else {
+      msgEl.textContent = '❌ ' + (data.detail || '发送失败');
+      msgEl.className = 'success-msg show';
+      msgEl.style.color = '#ef5350';
+    }
+    setTimeout(() => { msgEl.classList.remove('show'); msgEl.style.color = ''; }, 4000);
+  } catch (e) {
+    const msgEl = document.getElementById('feishu-result');
+    msgEl.textContent = '❌ 网络错误: ' + e.message;
+    msgEl.className = 'success-msg show';
+    msgEl.style.color = '#ef5350';
+    setTimeout(() => { msgEl.classList.remove('show'); msgEl.style.color = ''; }, 4000);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+// ============ 定位功能 ============
+function locatePosition(target) {
+  if (!navigator.geolocation) {
+    showError('浏览器不支持定位功能，请手动输入坐标');
+    return;
+  }
+
+  var btn = document.getElementById('locate-' + target);
+  btn.textContent = '⏳ 定位中...';
+  btn.classList.add('loading');
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      var lng = pos.coords.longitude.toFixed(6);
+      var lat = pos.coords.latitude.toFixed(6);
+      document.getElementById(target + '_lng').value = lng;
+      document.getElementById(target + '_lat').value = lat;
+      btn.textContent = '✅ 已定位';
+      btn.classList.remove('loading');
+      btn.classList.add('done');
+      setTimeout(function() {
+        btn.textContent = '📍 重定位';
+        btn.classList.remove('done');
+      }, 3000);
+    },
+    function(err) {
+      var msg = '定位失败: ';
+      switch(err.code) {
+        case 1: msg += '请允许位置权限'; break;
+        case 2: msg += '位置不可用'; break;
+        case 3: msg += '定位超时'; break;
+        default: msg += err.message;
+      }
+      showError(msg);
+      btn.textContent = '📍 定位';
+      btn.classList.remove('loading');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+// ============ 工具 ============
+function showError(msg) {
+  const el = document.getElementById('error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+async function copyLink() {
+  const url = document.getElementById('result-url').href;
+  try {
+    await navigator.clipboard.writeText(url);
+    const btn = document.querySelector('.result-link button.ghost');
+    btn.textContent = '✅ 已复制';
+    setTimeout(() => { btn.textContent = '📋 复制链接'; }, 2000);
+  } catch (_) {
+    prompt('复制链接:', url);
+  }
+}
+</script>
+</body>
+</html>

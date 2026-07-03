@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>换电站打卡路线</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; background: #0a0e1a; color: #e0e6f0; overflow-x: hidden; }
+
+  /* 地图容器 */
+  #map { width: 100%; height: 50vh; min-height: 320px; z-index: 1; }
+  .amap-container { background: #0f1525; }
+  .amap-logo, .amap-copyright { display: none !important; }
+
+  /* 顶部信息栏 */
+  .header-bar {
+    position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1000;
+    background: rgba(15,21,37,0.92); backdrop-filter: blur(12px);
+    border-radius: 12px; padding: 12px 16px;
+    border: 1px solid rgba(100,180,255,0.15);
+    pointer-events: none;
+  }
+  .header-bar h1 { font-size: 16px; font-weight: 600; color: #fff; }
+  .header-bar .meta { font-size: 12px; color: #8899aa; margin-top: 4px; }
+
+  /* 统计 */
+  .stats-row { display: flex; gap: 8px; padding: 12px 16px; }
+  .stat-card {
+    flex: 1; background: linear-gradient(135deg, #141b2d, #1a2340);
+    border-radius: 10px; padding: 10px 12px; text-align: center;
+    border: 1px solid rgba(100,180,255,0.1);
+  }
+  .stat-card .val { font-size: 20px; font-weight: 700; color: #4fc3f7; }
+  .stat-card .lbl { font-size: 11px; color: #6b7d95; margin-top: 2px; }
+
+  /* 起终点 */
+  .route-points { display: flex; gap: 8px; padding: 0 16px 10px; }
+  .route-point {
+    flex: 1; background: linear-gradient(135deg, #141b2d, #1a2340);
+    border-radius: 10px; padding: 10px 14px;
+    border: 1px solid rgba(100,180,255,0.1);
+  }
+  .route-point .point-label { font-size: 11px; color: #6b7d95; }
+  .route-point .point-coord { font-size: 13px; color: #8899aa; font-family: monospace; margin-top: 2px; }
+  .route-point.start { border-left: 3px solid #4caf50; }
+  .route-point.end { border-left: 3px solid #f44336; }
+
+  /* 站点卡片 */
+  .stations-section { padding: 0 16px 100px; }
+  .section-title {
+    font-size: 14px; font-weight: 600; color: #8899aa;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .section-title::before { content: ''; width: 3px; height: 14px; background: #4fc3f7; border-radius: 2px; }
+
+  .station-card {
+    background: linear-gradient(135deg, #141b2d, #1a2340);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 10px;
+    border: 1px solid rgba(100,180,255,0.1);
+    position: relative; cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .station-card:active { transform: scale(0.985); }
+  .station-card.active { border-color: #4fc3f7; }
+
+  .station-card .order-badge {
+    position: absolute; top: -6px; right: -6px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: linear-gradient(135deg, #4fc3f7, #0288d1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff;
+  }
+  .station-card .name { font-size: 15px; font-weight: 600; color: #fff; margin-right: 30px; }
+  .station-card .addr { font-size: 12px; color: #6b7d95; margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+  .station-card .info-row { display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .station-card .info-item { font-size: 12px; color: #8899aa; }
+  .station-card .info-item span { color: #4fc3f7; font-weight: 600; }
+
+  .soc-bar { height: 4px; background: #1e2a3a; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .soc-bar .fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+  .soc-high { background: linear-gradient(90deg, #4caf50, #66bb6a); }
+  .soc-mid { background: linear-gradient(90deg, #ff9800, #ffb74d); }
+  .soc-low { background: linear-gradient(90deg, #f44336, #ef5350); }
+
+  .nav-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .nav-btn {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    padding: 7px 12px; border-radius: 20px; font-size: 12px; cursor: pointer;
+    text-decoration: none; font-weight: 500;
+  }
+  .nav-btn.amap { background: rgba(0,150,255,0.15); border: 1px solid rgba(0,150,255,0.3); color: #0096ff; }
+  .nav-btn.baidu { background: rgba(50,100,255,0.15); border: 1px solid rgba(50,100,255,0.3); color: #4a6cf7; }
+
+  /* 风险提示 */
+  .risk-section { padding: 0 16px 20px; }
+  .risk-card {
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;
+    font-size: 13px; display: flex; gap: 8px; align-items: flex-start;
+  }
+  .risk-card.danger { background: rgba(239,83,80,0.1); border: 1px solid rgba(239,83,80,0.25); color: #ef5350; }
+  .risk-card.warning { background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.2); color: #ffb74d; }
+  .risk-card.info { background: rgba(79,195,247,0.06); border: 1px solid rgba(79,195,247,0.15); color: #4fc3f7; }
+  .risk-icon { font-size: 16px; flex-shrink: 0; }
+
+  /* 底部栏 */
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+    background: rgba(15,21,37,0.95); backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(100,180,255,0.1);
+    padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+    display: flex; gap: 10px;
+  }
+  .bottom-bar button {
+    flex: 1; padding: 12px; border-radius: 10px; border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .btn-primary { background: linear-gradient(135deg, #4fc3f7, #0288d1); color: #fff; }
+  .btn-secondary { background: rgba(100,180,255,0.1); color: #4fc3f7; border: 1px solid rgba(100,180,255,0.2) !important; }
+  .btn-success { background: linear-gradient(135deg, #66bb6a, #43a047); color: #fff; }
+
+  /* 加载 */
+  .loading-overlay {
+    position: fixed; inset: 0; background: #0a0e1a; z-index: 9999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .spinner {
+    width: 40px; height: 40px; border: 3px solid #1e2a3a;
+    border-top-color: #4fc3f7; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { margin-top: 16px; color: #6b7d95; font-size: 14px; }
+  .loading-error { color: #ef5350; text-align: center; padding: 20px; }
+  .loading-error small { color: #6b7d95; display: block; margin-top: 8px; }
+
+  .toast {
+    position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 9999;
+    background: #323232; color: #fff; padding: 10px 20px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 380px) {
+    .stat-card .val { font-size: 17px; }
+    .station-card .info-row { gap: 8px; }
+    .station-card .info-item { font-size: 11px; }
+    .nav-btn { font-size: 11px; padding: 6px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">正在加载打卡路线...</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<div id="map"></div>
+<div class="header-bar" id="header-bar" style="display:none;">
+  <h1 id="page-title">换电站打卡路线</h1>
+  <div class="meta" id="page-meta">加载中...</div>
+</div>
+
+<div class="stats-row" id="stats-row" style="display:none;">
+  <div class="stat-card"><div class="val" id="st-dist">-</div><div class="lbl">总里程 (km)</div></div>
+  <div class="stat-card"><div class="val" id="st-time">-</div><div class="lbl">预计时长</div></div>
+  <div class="stat-card"><div class="val" id="st-swaps">-</div><div class="lbl">换电次数</div></div>
+  <div class="stat-card"><div class="val" id="st-final-soc">-</div><div class="lbl">终到 SOC</div></div>
+</div>
+
+<div class="route-points" id="route-points" style="display:none;"></div>
+
+<div class="stations-section" id="stations-section" style="display:none;">
+  <div class="section-title">📋 打卡站点</div>
+  <div id="stations-list"></div>
+</div>
+
+<div class="risk-section" id="risk-section" style="display:none;">
+  <div class="section-title">⚠️ 风险提示</div>
+  <div id="risks-list"></div>
+</div>
+
+<div class="bottom-bar" id="bottom-bar" style="display:none;">
+  <button class="btn-secondary" onclick="shareRoute()">📤 分享</button>
+  <button class="btn-primary" onclick="fitMapView()">🗺️ 全览</button>
+  <button class="btn-success" onclick="startDrive()">🚗 开始导航</button>
+</div>
+
+<script>
+// ===================== 全局状态 =====================
+var routeData = null;
+var routeParams = null;
+var gAmap = null;
+var map = null;
+var markers = [];
+var isDemo = false;
+
+// ===================== 初始化 =====================
+window.addEventListener('DOMContentLoaded', async function() {
+  // 从 URL hash、查询参数或路径中提取 route_id
+  var routeId = location.hash.slice(1)
+    || new URLSearchParams(location.search).get('id')
+    || location.pathname.split('/').pop();
+  if (!routeId) {
+    document.getElementById('loading').innerHTML =
+      '<div class="loading-error">缺少路线 ID<br><small>请使用分享链接访问</small></div>';
+    return;
+  }
+
+  // 获取配置（含高德 Key）
+  var config = null;
+  try {
+    var cfgResp = await fetch('/api/v1/config');
+    config = await cfgResp.json();
+  } catch (e) {
+    config = { amap_js_api_key: '', amap_js_security_code: '' };
+  }
+
+  // 加载路线数据
+  try {
+    var resp = await fetch('/api/v1/route/' + routeId);
+    if (!resp.ok) throw new Error('Not found');
+    var json = await resp.json();
+    routeData = json.result;
+    routeParams = json.params;
+  } catch (e) {
+    if (routeId === 'demo') {
+      try {
+        var dresp = await fetch('/api/v1/demo-route');
+        var djson = await dresp.json();
+        routeData = djson.result;
+        routeParams = { start_lng: 121.500, start_lat: 31.240, end_lng: 121.395, end_lat: 31.195, car_model: '蔚来-ET5', city: '上海' };
+        isDemo = true;
+      } catch (e2) {
+        document.getElementById('loading').innerHTML =
+          '<div class="loading-error">加载失败<br><small>' + e2.message + '</small></div>';
+        return;
+      }
+    } else {
+      document.getElementById('loading').innerHTML =
+        '<div class="loading-error">路线不存在<br><small>' + e.message + '</small></div>';
+      return;
+    }
+  }
+
+  if (!routeData) return;
+
+  // 加载高德 JS API
+  if (config.amap_js_api_key) {
+    window._AMapSecurityConfig = {
+      securityJsCode: config.amap_js_security_code || ''
+    };
+    window.__onAmapReady = function() {
+      gAmap = window.AMap;
+      renderPage();
+    };
+    var script = document.createElement('script');
+    script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady';
+    script.async = true;
+    script.onerror = function() {
+      console.warn('AMap JS API failed to load, using canvas fallback');
+      renderPage();
+    };
+    document.head.appendChild(script);
+
+    // 10秒超时降级
+    setTimeout(function() {
+      if (!gAmap) {
+        renderPage();
+      }
+    }, 10000);
+  } else {
+    renderPage(); // 无 Key，用 Canvas 降级
+  }
+});
+
+// ===================== 渲染主函数 =====================
+function renderPage() {
+  document.getElementById('loading').style.display = 'none';
+
+  // 标题
+  var title = isDemo ? '🚗 演示路线（上海）' : ('⚡ ' + (routeParams.city || '') + ' 换电站打卡路线');
+  document.getElementById('page-title').textContent = title;
+  document.getElementById('page-meta').textContent =
+    (routeParams.city || '') + ' | ' + (routeData.car_model || '自定义车型') + ' | ' +
+    (routeData.unique_station_count || 0) + ' 个站点';
+
+  // 统计
+  document.getElementById('stats-row').style.display = 'flex';
+  document.getElementById('st-dist').textContent = routeData.total_distance || 0;
+  document.getElementById('st-time').textContent = formatDuration(routeData.total_duration || 0);
+  document.getElementById('st-swaps').textContent = (routeData.route || []).length;
+  document.getElementById('st-final-soc').textContent = (routeData.final_arrival_soc || 0) + '%';
+
+  // 起终点
+  renderPoints();
+
+  // 站点卡片
+  renderStations(routeData.route || []);
+
+  // 风险
+  renderRisks(routeData.risks || []);
+
+  // 地图（高德 or Canvas 降级）
+  if (gAmap) {
+    initAmap();
+  } else {
+    drawFallbackMap();
+  }
+
+  document.getElementById('header-bar').style.display = 'block';
+  document.getElementById('bottom-bar').style.display = 'flex';
+}
+
+// ===================== 起终点 =====================
+function renderPoints() {
+  var el = document.getElementById('route-points');
+  el.style.display = 'flex';
+  el.innerHTML =
+    '<div class="route-point start"><div class="point-label">🟢 起点</div><div class="point-coord">' +
+    (routeParams.start_lat ? routeParams.start_lat.toFixed(4) : '?') + ', ' +
+    (routeParams.start_lng ? routeParams.start_lng.toFixed(4) : '?') + '</div></div>' +
+    '<div class="route-point end"><div class="point-label">🔴 终点</div><div class="point-coord">' +
+    (routeParams.end_lat ? routeParams.end_lat.toFixed(4) : '?') + ', ' +
+    (routeParams.end_lng ? routeParams.end_lng.toFixed(4) : '?') + '</div></div>';
+}
+
+// ===================== 站点卡片 =====================
+function renderStations(route) {
+  var container = document.getElementById('stations-list');
+  var section = document.getElementById('stations-section');
+  if (!route.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  var html = '';
+  for (var i = 0; i < route.length; i++) {
+    var s = route[i];
+    var socClass = s.arrival_soc >= 40 ? 'soc-high' : s.arrival_soc >= 20 ? 'soc-mid' : 'soc-low';
+    var amapUrl = 'https://uri.amap.com/navigation?to=' + s.lng + ',' + s.lat + ',' + encodeURIComponent(s.station_name) + '&mode=car';
+    var baiduUrl = 'https://api.map.baidu.com/direction?coord_type=gcj02&destination=' + s.lat + ',' + s.lng + '&dest=' + encodeURIComponent(s.station_name) + '&output=html';
+    html +=
+      '<div class="station-card" data-index="' + i + '" onclick="focusStation(' + i + ')">' +
+        '<div class="order-badge">' + (i + 1) + '</div>' +
+        '<div class="name">' + s.station_name + '</div>' +
+        (s.station_address ? '<div class="addr">📍 ' + s.station_address + '</div>' : '') +
+        '<div class="info-row">' +
+          '<div class="info-item">📏 <span>' + s.distance + ' km</span></div>' +
+          '<div class="info-item">⏱ <span>' + formatDuration(s.duration) + '</span></div>' +
+          '<div class="info-item">🔋 到站 <span>' + s.arrival_soc + '%</span></div>' +
+          '<div class="info-item">⚡ 换后 <span>' + s.swap_soc + '%</span></div>' +
+        '</div>' +
+        '<div class="soc-bar"><div class="fill ' + socClass + '" style="width:' + s.arrival_soc + '%"></div></div>' +
+        '<div class="nav-btns">' +
+          '<a class="nav-btn amap" href="' + amapUrl + '" target="_blank" rel="noopener">🗺️ 高德导航</a>' +
+          '<a class="nav-btn baidu" href="' + baiduUrl + '" target="_blank" rel="noopener">🗺️ 百度导航</a>' +
+        '</div>' +
+      '</div>';
+  }
+  container.innerHTML = html;
+}
+
+// ===================== 风险 =====================
+function renderRisks(risks) {
+  var container = document.getElementById('risks-list');
+  var section = document.getElementById('risk-section');
+  if (!risks.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  var iconMap = { danger: '🚨', warning: '⚠️', info: 'ℹ️' };
+  var html = '';
+  for (var i = 0; i < risks.length; i++) {
+    var r = risks[i];
+    var icon = iconMap[r.level] || 'ℹ️';
+    html += '<div class="risk-card ' + r.level + '"><span class="risk-icon">' + icon + '</span><span>' + r.message + '</span></div>';
+  }
+  container.innerHTML = html;
+}
+
+// ===================== 高德 JS API 地图 =====================
+function initAmap() {
+  var route = routeData.route || [];
+
+  // 计算居中位置
+  var points = [[routeParams.start_lng, routeParams.start_lat]];
+  for (var i = 0; i < route.length; i++) {
+    points.push([route[i].lng, route[i].lat]);
+  }
+  points.push([routeParams.end_lng, routeParams.end_lat]);
+
+  var lngs = points.map(function(p) { return p[0]; });
+  var lats = points.map(function(p) { return p[1]; });
+  var center = [
+    (Math.min.apply(null, lngs) + Math.max.apply(null, lngs)) / 2,
+    (Math.min.apply(null, lats) + Math.max.apply(null, lats)) / 2
+  ];
+
+  // 初始化地图 — 暗色主题
+  map = new gAmap.Map('map', {
+    center: center,
+    zoom: 12,
+    mapStyle: 'amap://styles/dark',
+    resizeEnable: true,
+    features: ['bg', 'road', 'building', 'point'],
+  });
+
+  // 起终点标记
+  addMarker([routeParams.start_lng, routeParams.start_lat], '起', '#4caf50', '🟢 起点');
+  addMarker([routeParams.end_lng, routeParams.end_lat], '终', '#f44336', '🔴 终点');
+
+  // 站点标记（带数字）
+  addStationMarkers(route);
+
+  // 路线折线
+  addRoutePolyline(points);
+
+  // 自适应视野
+  setTimeout(function() {
+    map.setFitView(null, false, [60, 60, 60, 60]);
+  }, 300);
+
+  window.addEventListener('resize', function() {
+    if (map) map.resize();
+  });
+}
+
+function addMarker(pos, label, bgColor, popupHtml) {
+  var content = '<div style="background:' + bgColor + ';color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);">' + label + '</div>';
+  var marker = new gAmap.Marker({
+    position: pos,
+    content: content,
+    offset: new gAmap.Pixel(-16, -16),
+    zIndex: 100,
+  });
+  marker.setMap(map);
+  marker.on('click', function() {
+    var info = new gAmap.InfoWindow({
+      content: '<div style="padding:6px;font-size:13px;"><b>' + popupHtml + '</b></div>',
+      offset: new gAmap.Pixel(0, -30),
+    });
+    info.open(map, marker.getPosition());
+  });
+  return marker;
+}
+
+function addStationMarkers(route) {
+  var colors = ['#4fc3f7', '#0288d1', '#00bcd4', '#26c6da', '#0097a7', '#00838f', '#006064', '#2196f3', '#1976d2', '#1565c0'];
+
+  for (var i = 0; i < route.length; i++) {
+    var s = route[i];
+    var color = colors[i % colors.length];
+    var num = i + 1;
+    var content = '<div style="background:' + color + ';color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);cursor:pointer;">' + num + '</div>';
+
+    var marker = new gAmap.Marker({
+      position: [s.lng, s.lat],
+      content: content,
+      offset: new gAmap.Pixel(-17, -17),
+      zIndex: 90 - i,
+    });
+    marker.setMap(map);
+    markers.push(marker);
+
+    marker.on('click', (function(station, idx) {
+      return function() {
+        var socColor = station.arrival_soc >= 40 ? '#4caf50' : station.arrival_soc >= 20 ? '#ff9800' : '#f44336';
+        var infoHtml =
+          '<div style="padding:8px;font-size:13px;max-width:220px;">' +
+            '<b>#' + (idx + 1) + ' ' + station.station_name + '</b><br>' +
+            '📏 ' + station.distance + ' km | ⏱ ' + formatDuration(station.duration) + '<br>' +
+            '<span style="color:' + socColor + ';font-weight:600;">🔋 到站 ' + station.arrival_soc + '%</span>' +
+            ' → ⚡ ' + station.swap_soc + '%' +
+          '</div>';
+        var info = new gAmap.InfoWindow({
+          content: infoHtml,
+          offset: new gAmap.Pixel(0, -34),
+        });
+        info.open(map, marker.getPosition());
+      };
+    })(s, i));
+  }
+}
+
+function addRoutePolyline(points) {
+  if (!points || points.length < 2) return;
+
+  polyline = new gAmap.Polyline({
+    path: points,
+    strokeColor: '#4fc3f7',
+    strokeWeight: 4,
+    strokeOpacity: 0.8,
+    strokeStyle: 'dashed',
+    strokeDasharray: [10, 6],
+    lineJoin: 'round',
+  });
+  polyline.setMap(map);
+
+  // 方向箭头
+  for (var j = 0; j < points.length - 1; j++) {
+    var mid = [(points[j][0] + points[j + 1][0]) / 2, (points[j][1] + points[j + 1][1]) / 2];
+    var arrow = new gAmap.Marker({
+      position: mid,
+      content: '<div style="color:#4fc3f7;font-size:18px;opacity:0.7;">▶</div>',
+      offset: new gAmap.Pixel(-9, -9),
+      zIndex: 50,
+    });
+    arrow.setMap(map);
+  }
+}
+
+// ===================== Canvas 降级地图 =====================
+function drawFallbackMap() {
+  var route = routeData.route || [];
+  if (!route.length) return;
+
+  var container = document.getElementById('map');
+  container.style.background = '#0f1525';
+  container.innerHTML = '<div style="position:absolute;top:8px;left:8px;color:#6b7d95;font-size:11px;z-index:10;background:rgba(15,21,37,0.8);padding:4px 10px;border-radius:6px;">🗺️ 简易路线示意（地图 API 未加载）</div>';
+
+  var cvs = document.createElement('canvas');
+  var rect = container.getBoundingClientRect();
+  cvs.width = (rect.width || 320) * 2;
+  cvs.height = (rect.height || 280) * 2;
+  cvs.style.width = '100%';
+  cvs.style.height = '100%';
+  container.appendChild(cvs);
+
+  var ctx = cvs.getContext('2d');
+  ctx.scale(2, 2);
+  var W = rect.width || 320;
+  var H = rect.height || 280;
+
+  var pts = [[routeParams.start_lng, routeParams.start_lat]];
+  for (var i = 0; i < route.length; i++) { pts.push([route[i].lng, route[i].lat]); }
+  pts.push([routeParams.end_lng, routeParams.end_lat]);
+
+  var lngs = pts.map(function(p) { return p[0]; });
+  var lats = pts.map(function(p) { return p[1]; });
+  var minLng = Math.min.apply(null, lngs);
+  var maxLng = Math.max.apply(null, lngs);
+  var minLat = Math.min.apply(null, lats);
+  var maxLat = Math.max.apply(null, lats);
+  var pad = 40;
+
+  function toScreen(lng, lat) {
+    return [
+      pad + ((lng - minLng) / (maxLng - minLng || 1)) * (W - 2 * pad),
+      pad + ((maxLat - lat) / (maxLat - minLat || 1)) * (H - 2 * pad)
+    ];
+  }
+
+  // 网格
+  ctx.strokeStyle = '#1a2340';
+  ctx.lineWidth = 0.5;
+  for (var x = 0; x < W; x += 30) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (var y = 0; y < H; y += 30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  // 连线
+  ctx.strokeStyle = '#4fc3f7';
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([8, 4]);
+  ctx.beginPath();
+  for (var p = 0; p < pts.length; p++) {
+    var sp = toScreen(pts[p][0], pts[p][1]);
+    if (p === 0) ctx.moveTo(sp[0], sp[1]); else ctx.lineTo(sp[0], sp[1]);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 节点
+  var colors = ['#4fc3f7', '#0288d1', '#00bcd4', '#26c6da', '#0097a7', '#00838f', '#006064', '#2196f3', '#1976d2', '#1565c0'];
+  for (var q = 0; q < route.length; q++) {
+    var sp = toScreen(route[q].lng, route[q].lat);
+    ctx.beginPath(); ctx.arc(sp[0], sp[1], 12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(79,195,247,0.15)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(sp[0], sp[1], 6, 0, Math.PI * 2);
+    ctx.fillStyle = colors[q % colors.length]; ctx.fill();
+    ctx.strokeStyle = '#0a0e1a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText(q + 1, sp[0], sp[1] + 3.5);
+  }
+}
+
+// ===================== 交互 =====================
+function focusStation(index) {
+  var route = routeData.route || [];
+  if (index >= route.length) return;
+  var s = route[index];
+
+  if (map && gAmap) {
+    map.setCenter([s.lng, s.lat], true);
+    map.setZoom(15, true);
+    if (markers[index]) {
+      markers[index].emit('click', { target: markers[index] });
+    }
+  } else {
+    // 降级模式
+    var card = document.querySelector('.station-card[data-index="' + index + '"]');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  document.querySelectorAll('.station-card').forEach(function(el) { el.classList.remove('active'); });
+  var card = document.querySelector('.station-card[data-index="' + index + '"]');
+  if (card) card.classList.add('active');
+}
+
+function fitMapView() {
+  if (map && gAmap) {
+    map.setFitView(null, false, [60, 60, 60, 60]);
+  }
+  document.getElementById('map').scrollIntoView({ behavior: 'smooth' });
+}
+
+function startDrive() {
+  var route = routeData.route || [];
+  if (!route.length) return;
+  var first = route[0];
+  var url = 'https://uri.amap.com/navigation?from=' + routeParams.start_lng + ',' + routeParams.start_lat + ',起点&to=' + first.lng + ',' + first.lat + ',' + encodeURIComponent(first.station_name) + '&mode=car';
+  window.open(url, '_blank');
+}
+
+// ===================== 工具 =====================
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '-';
+  var h = Math.floor(seconds / 3600);
+  var m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return h + '时' + m + '分';
+  return m + '分钟';
+}
+
+// ===================== 分享 =====================
+async function shareRoute() {
+  var url = location.href;
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: '换电站打卡路线',
+        text: (routeData ? '换电站打卡路线 | ' + (routeData.car_model || '') + ' | ' + (routeData.total_distance || 0) + 'km' : ''),
+        url: url,
+      });
+    } catch (_) {}
+  } else {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('✅ 链接已复制到剪贴板');
+    } catch (_) {
+      prompt('复制链接:', url);
+    }
+  }
+}
+
+function showToast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(function() { el.classList.remove('show'); }, 2500);
+}
+</script>
+</body>
+</html>
