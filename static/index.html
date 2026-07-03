@@ -231,7 +231,7 @@ window.addEventListener('DOMContentLoaded', async function() {
         var dresp = await fetch('/api/v1/demo-route');
         var djson = await dresp.json();
         routeData = djson.result;
-        routeParams = { start_lng: 121.500, start_lat: 31.240, end_lng: 121.395, end_lat: 31.195, car_model: '蔚来-ET5', city: '上海' };
+        routeParams = { start_lng: 121.500, start_lat: 31.240, start_name: '陆家嘴', end_lng: 121.395, end_lat: 31.195, end_name: '虹桥火车站', car_model: '蔚来-ET5', city: '上海' };
         isDemo = true;
       } catch (e2) {
         document.getElementById('loading').innerHTML =
@@ -318,13 +318,11 @@ function renderPage() {
 function renderPoints() {
   var el = document.getElementById('route-points');
   el.style.display = 'flex';
+  var startName = routeParams.start_name || ('起点 (' + (routeParams.start_lat ? routeParams.start_lat.toFixed(4) : '?') + ')');
+  var endName = routeParams.end_name || ('终点 (' + (routeParams.end_lat ? routeParams.end_lat.toFixed(4) : '?') + ')');
   el.innerHTML =
-    '<div class="route-point start"><div class="point-label">🟢 起点</div><div class="point-coord">' +
-    (routeParams.start_lat ? routeParams.start_lat.toFixed(4) : '?') + ', ' +
-    (routeParams.start_lng ? routeParams.start_lng.toFixed(4) : '?') + '</div></div>' +
-    '<div class="route-point end"><div class="point-label">🔴 终点</div><div class="point-coord">' +
-    (routeParams.end_lat ? routeParams.end_lat.toFixed(4) : '?') + ', ' +
-    (routeParams.end_lng ? routeParams.end_lng.toFixed(4) : '?') + '</div></div>';
+    '<div class="route-point start"><div class="point-label">🟢 起点</div><div class="point-coord">' + startName + '</div></div>' +
+    '<div class="route-point end"><div class="point-label">🔴 终点</div><div class="point-coord">' + endName + '</div></div>';
 }
 
 // ===================== 站点卡片 =====================
@@ -616,9 +614,11 @@ function startDrive() {
   var route = routeData.route || [];
   if (!route.length) return;
   var first = route[0];
-  // 从起点导航到第一个换电站
-  var url = 'https://uri.amap.com/navigation?from=' + routeParams.start_lng + ',' + routeParams.start_lat + ',起点&to=' + first.lng + ',' + first.lat + ',' + encodeURIComponent(first.station_name) + '&mode=car';
-  // 用 location.href 替代 window.open 避免被拦截
+  var startName = encodeURIComponent(routeParams.start_name || '起点');
+  var endName = encodeURIComponent(first.station_name);
+  // 高德导航：从起点到第一个换电站
+  var url = 'https://uri.amap.com/navigation?from=' + routeParams.start_lng + ',' + routeParams.start_lat + ',' + startName + '&to=' + first.lng + ',' + first.lat + ',' + endName + '&mode=car&coordinate=gaode';
+  // 尝试打开高德APP，如果没安装则打开网页版
   window.location.href = url;
 }
 
