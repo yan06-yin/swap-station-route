@@ -393,7 +393,7 @@ window.addEventListener('DOMContentLoaded', async function() {
         initMap();
       };
       var script = document.createElement('script');
-      script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady&plugin=AMap.PlaceSearch,AMap.AutoComplete,AMap.Geocoder';
+      script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady&plugin=AMap.PlaceSearch,AMap.AutoComplete,AMap.Geocoder,AMap.Geolocation';
       script.async = true;
       document.head.appendChild(script);
     }
@@ -611,57 +611,63 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// ============ GPS定位 ============
+// ============ 高德定位（优先） ============
 function locatePosition() {
-  if (!navigator.geolocation) {
-    showError('浏览器不支持定位功能');
-    return;
-  }
   var btn = document.getElementById('locate-btn');
   btn.textContent = '⏳ 定位中...';
   btn.classList.add('loading');
 
+  if (gAmap) {
+    // 高德定位（国内更精准）
+    try {
+      var geolocation = new gAmap.Geolocation({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        zoomToAccuracy: true,
+      });
+      geolocation.getCurrentPosition(function(status, result) {
+        btn.classList.remove('loading');
+        if (status === 'complete') {
+          var lng = result.position.getLng();
+          var lat = result.position.getLat();
+          // 地图定位到当前位置
+          map.setCenter([lng, lat]);
+          map.setZoom(15);
+          setStartPoint(lng, lat, '我的位置');
+          autoDetectCity(lng, lat);
+          btn.textContent = '✅ 已定位';
+          btn.classList.add('done');
+          setTimeout(function() {
+            btn.textContent = '📍 定位';
+            btn.classList.remove('done');
+          }, 3000);
+        } else {
+          // 高德定位失败 → 降级到浏览器定位
+          locateBrowserFallback(btn);
+        }
+      });
+    } catch(e) {
+      locateBrowserFallback(btn);
+    }
+  } else {
+    locateBrowserFallback(btn);
+  }
+}
+
+// 浏览器定位降级
+function locateBrowserFallback(btn) {
+  if (!navigator.geolocation) {
+    showError('浏览器不支持定位，请搜索地点');
+    btn.textContent = '📍 定位';
+    btn.classList.remove('loading');
+    return;
+  }
   navigator.geolocation.getCurrentPosition(
     function(pos) {
       var lng = pos.coords.longitude;
       var lat = pos.coords.latitude;
       setStartPoint(lng, lat, '我的位置');
-
-      // 自动识别城市（逆地理编码）
-      if (gAmap) {
-        try {
-          gAmap.plugin(['AMap.Geocoder'], function() {
-            var geocoder = new gAmap.Geocoder({ city: '', radius: 1000 });
-            geocoder.getAddress([lng, lat], function(status, result) {
-              try {
-                if (status === 'complete' && result && result.regeocode) {
-                  var comp = result.regeocode.addressComponent;
-                  // 上海、北京等直辖市 city 可能为空，用 province 代替
-                  var city = comp.city || comp.province || '';
-                  city = city.replace(/[市省]/g, '');
-                  // 有时 province 返回"上海市"，去掉"市"后可能变成"上海"或""
-                  var district = comp.district || '';
-                  if (!city && district) {
-                    // 从区名反推城市（如"浦东新区" → "上海"）
-                    if (district.indexOf('北京') > -1) city = '北京';
-                    else if (district.indexOf('上海') > -1) city = '上海';
-                    else if (district.indexOf('天津') > -1) city = '天津';
-                    else if (district.indexOf('重庆') > -1) city = '重庆';
-                  }
-                  if (city) {
-                    document.getElementById('city').value = city;
-                  }
-                }
-              } catch(e) {
-                console.warn('Geocoder parse error', e);
-              }
-            });
-          });
-        } catch(e) {
-          console.warn('Geocoder plugin error', e);
-        }
-      }
-
+      autoDetectCity(lng, lat);
       btn.textContent = '✅ 已定位';
       btn.classList.remove('loading');
       btn.classList.add('done');
@@ -671,19 +677,39 @@ function locatePosition() {
       }, 3000);
     },
     function(err) {
-      var msg = '定位失败: ';
-      switch(err.code) {
-        case 1: msg += '请允许位置权限'; break;
-        case 2: msg += '位置不可用'; break;
-        case 3: msg += '定位超时'; break;
-        default: msg += err.message;
-      }
-      showError(msg);
+      showError('定位失败，请直接在搜索框输入地点');
       btn.textContent = '📍 定位';
       btn.classList.remove('loading');
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
+}
+
+// 逆地理编码 → 识别城市
+function autoDetectCity(lng, lat) {
+  if (!gAmap) return;
+  try {
+    gAmap.plugin(['AMap.Geocoder'], function() {
+      var geocoder = new gAmap.Geocoder({ city: '', radius: 1000 });
+      geocoder.getAddress([lng, lat], function(status, result) {
+        try {
+          if (status === 'complete' && result && result.regeocode) {
+            var comp = result.regeocode.addressComponent;
+            var city = comp.city || comp.province || '';
+            city = city.replace(/[市省]/g, '');
+            var district = comp.district || '';
+            if (!city && district) {
+              if (district.indexOf('北京') > -1) city = '北京';
+              else if (district.indexOf('上海') > -1) city = '上海';
+              else if (district.indexOf('天津') > -1) city = '天津';
+              else if (district.indexOf('重庆') > -1) city = '重庆';
+            }
+            if (city) document.getElementById('city').value = city;
+          }
+        } catch(e) {}
+      });
+    });
+  } catch(e) {}
 }
 
 // ============ 创建路线 ============
