@@ -266,7 +266,7 @@
     <div class="card-title">📍 路线信息</div>
     <div class="form-group">
       <label>城市</label>
-      <input type="text" id="city" placeholder="如 上海、北京、深圳" value="上海">
+      <input type="text" id="city" placeholder="如 上海、北京、深圳（定位后自动识别）">
     </div>
     <div class="form-group">
       <label>起点坐标</label>
@@ -395,7 +395,7 @@ window.addEventListener('DOMContentLoaded', async function() {
         initMap();
       };
       var script = document.createElement('script');
-      script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady&plugin=AMap.PlaceSearch,AMap.AutoComplete';
+      script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + config.amap_js_api_key + '&callback=__onAmapReady&plugin=AMap.PlaceSearch,AMap.AutoComplete,AMap.Geocoder';
       script.async = true;
       document.head.appendChild(script);
     }
@@ -628,12 +628,25 @@ function locatePosition() {
     function(pos) {
       var lng = pos.coords.longitude;
       var lat = pos.coords.latitude;
-      // 自动设为起点
       setStartPoint(lng, lat);
-      // 如果地图还没初始化，先用高德API初始化
-      if (!gAmap) {
-        // 等待地图初始化
+
+      // 自动识别城市（逆地理编码）
+      if (gAmap) {
+        var geocoder = new gAmap.Geocoder({ city: '', radius: 1000 });
+        geocoder.getAddress([lng, lat], function(status, result) {
+          if (status === 'complete' && result.regeocode && result.regeocode.addressComponent) {
+            var city = result.regeocode.addressComponent.city
+                      || result.regeocode.addressComponent.province
+                      || '';
+            // 去掉"市"字
+            city = city.replace('市', '');
+            if (city) {
+              document.getElementById('city').value = city;
+            }
+          }
+        });
       }
+
       btn.textContent = '✅ 已定位';
       btn.classList.remove('loading');
       btn.classList.add('done');
