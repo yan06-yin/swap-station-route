@@ -26,12 +26,24 @@ def get_car_params(car_model: str) -> tuple[float, float]:
 
 
 def calc_arrival_soc(
-    distance_km: float, battery_kwh: float, consumption: float, initial_soc: float
+    distance_km: float, battery_kwh: float, consumption: float, initial_soc: float,
+    condition: str = "normal"
 ) -> float:
-    """计算到达时的剩余 SOC (%)"""
+    """计算到达时的剩余 SOC (%)
+    condition: normal/winter/highway/winter_highway 影响能耗
+    """
+    # 能耗调整系数
+    factors = {
+        "normal": 1.0,
+        "winter": 1.20,        # 冬季多耗 20%
+        "highway": 1.15,       # 高速多耗 15%
+        "winter_highway": 1.35, # 冬季高速多耗 35%
+    }
+    adj_consumption = consumption * factors.get(condition, 1.0)
+
     if distance_km <= 0:
         return round(initial_soc, 1)
-    energy_used = (distance_km / 100) * consumption
+    energy_used = (distance_km / 100) * adj_consumption
     energy_capacity = battery_kwh * (initial_soc / 100)
     if energy_capacity <= 0:
         return 0.0
@@ -194,12 +206,18 @@ def _deduplicate_stations(stations: list[dict]) -> list[dict]:
 def optimize_route(params: dict) -> dict[str, Any]:
     """
     主路线规划入口
-    方向感知贪心算法：优先选择往目的地方向的站点，避免绕路
+    方向感知贪心算法 + 多策略支持
+
+    params 额外支持:
+        strategy: "balanced" | "shortest" | "safest" (默认 balanced)
+        condition: "normal" | "winter" | "highway" | "winter_highway" (默认 normal)
     """
     start = params["start_location"]
     end = params["end_location"]
     max_swaps = params.get("max_swaps", 3)
     initial_soc = params.get("initial_soc", 100.0)
+    strategy = params.get("strategy", "balanced")
+    condition = params.get("condition", "normal")
 
     car_model = params.get("car_model", "")
     if car_model:
@@ -246,18 +264,27 @@ def optimize_route(params: dict) -> dict[str, Any]:
             st = stations[idx]
             dist_km = _haversine(current_pos[0], current_pos[1], st["lng"], st["lat"])
             if dist_km < 0.2:
-                continue  # 跳过太近的站
-            arrival = calc_arrival_soc(dist_km, battery, consumption, current_soc)
+                continue
+            arrival = calc_arrival_soc(dist_km, battery, consumption, current_soc, condition)
             progress = _progress_score(st["lng"], st["lat"], current_pos[0], current_pos[1])
 
-            # 安全兜底：如果SOC不够，依然可以选但要低分
             max_d = max(1, max(
                 _haversine(current_pos[0], current_pos[1], stations[j]["lng"], stations[j]["lat"])
                 for j in remaining
             ))
             dist_score = 1 - dist_km / max_d
-            # 综合评分：进度优先
-            score = progress * 0.5 + dist_score * 0.3 + (arrival / 100) * 0.2
+
+            # 多策略评分权重
+            if strategy == "shortest":
+                # 最短路线：距离权重最大
+                score = dist_score * 0.6 + progress * 0.3 + (arrival / 100) * 0.1
+            elif strategy == "safest":
+                # 最安全：SOC 权重最大
+                score = (arrival / 100) * 0.5 + dist_score * 0.3 + progress * 0.2
+            else:
+                # 均衡：综合评分
+                score = progress * 0.5 + dist_score * 0.3 + (arrival / 100) * 0.2
+
             candidates.append((idx, score, dist_km, arrival, progress))
 
         if not candidates:
@@ -290,7 +317,7 @@ def optimize_route(params: dict) -> dict[str, Any]:
         route_indices.append(best_idx)
 
         station = stations[best_idx]
-        arrival_soc = calc_arrival_soc(best_dist, battery, consumption, current_soc)
+        arrival_soc = calc_arrival_soc(best_dist, battery, consumption, current_soc, condition)
         swap_soc = calc_swap_result(arrival_soc)
 
         current_pos = (station["lng"], station["lat"])
@@ -328,7 +355,7 @@ def optimize_route(params: dict) -> dict[str, Any]:
     for seq_idx, st_idx in enumerate(optimized_indices):
         station = stations[st_idx]
         dist_km = _haversine(current_pos[0], current_pos[1], station["lng"], station["lat"])
-        arrival_soc = calc_arrival_soc(dist_km, battery, consumption, current_soc)
+        arrival_soc = calc_arrival_soc(dist_km, battery, consumption, current_soc, condition)
         swap_soc = calc_swap_result(arrival_soc)
         duration_sec = int(dist_km / 60 * 3600) if dist_km > 0 else 0
 
@@ -351,7 +378,7 @@ def optimize_route(params: dict) -> dict[str, Any]:
     last_pos = (route[-1]["lng"], route[-1]["lat"]) if route else start
     final_dist = _haversine(last_pos[0], last_pos[1], end[0], end[1])
     final_duration = int(final_dist / 60 * 3600) if final_dist > 0 else 0
-    final_soc = calc_arrival_soc(final_dist, battery, consumption, current_soc)
+    final_soc = calc_arrival_soc(final_dist, battery, consumption, current_soc, condition)
 
     segments = []
     for r in route:

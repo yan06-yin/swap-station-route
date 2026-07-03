@@ -316,6 +316,25 @@
       <div class="form-group"><label>出发 SOC (%)</label><input type="number" id="initial_soc" min="0" max="100" value="100"></div>
       <div class="form-group"><label>最多换电次数</label><input type="number" id="max_swaps" min="1" max="10" value="3"></div>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>规划策略</label>
+        <select id="strategy">
+          <option value="balanced">均衡（推荐）</option>
+          <option value="shortest">最短路线</option>
+          <option value="safest">最安全（高SOC）</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>路况条件</label>
+        <select id="condition">
+          <option value="normal">正常</option>
+          <option value="winter">冬季（能耗+20%）</option>
+          <option value="highway">高速（能耗+15%）</option>
+          <option value="winter_highway">冬季高速（能耗+35%）</option>
+        </select>
+      </div>
+    </div>
     <div class="form-group" id="custom-fields" style="display:none;">
       <div class="form-row">
         <div class="form-group"><label>电池容量 (kWh)</label><input type="number" id="battery_kwh" placeholder="75"></div>
@@ -750,6 +769,8 @@ async function createRoute() {
     car_model: carModel,
     initial_soc: parseFloat(document.getElementById('initial_soc').value) || 100,
     max_swaps: parseInt(document.getElementById('max_swaps').value) || 3,
+    strategy: document.getElementById('strategy').value || 'balanced',
+    condition: document.getElementById('condition').value || 'normal',
   };
 
   if (!carModel) {

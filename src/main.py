@@ -16,7 +16,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from src.amap_client import get_driving_route, get_js_api_key, get_js_security_code, search_swap_stations
+from src.amap_client import (
+    discover_cities_along_route,
+    get_driving_route,
+    get_js_api_key,
+    get_js_security_code,
+    search_swap_stations,
+)
 from src.feishu_bot import send_route_card
 from src.route_planner import optimize_route
 
@@ -57,6 +63,8 @@ class RouteRequest(BaseModel):
     consumption: float = Field(default=0, description="百公里能耗，0=按车型查表")
     initial_soc: float = Field(default=100.0, ge=0, le=100, description="出发 SOC (%)")
     max_swaps: int = Field(default=3, ge=1, le=10, description="最多换电次数")
+    strategy: str = Field(default="balanced", description="策略: balanced/shortest/safest")
+    condition: str = Field(default="normal", description="路况: normal/winter/highway/winter_highway")
 
 
 class RouteResponse(BaseModel):
@@ -89,10 +97,19 @@ async def get_config():
 async def create_route(req: RouteRequest):
     """创建打卡路线"""
     # 1. 搜索换电站（多城市搜索）
+    # 先搜起点城市
     cities_to_search = [req.city]
-    # 如果终点城市不同，也搜一下
-    if req.city and req.end_name and req.end_name != req.city:
-        cities_to_search.append(req.end_name)
+
+    # 自动发现沿途城市
+    try:
+        waypoint_cities = await discover_cities_along_route(
+            (req.start_lng, req.start_lat), (req.end_lng, req.end_lat)
+        )
+        for c in waypoint_cities:
+            if c not in cities_to_search:
+                cities_to_search.append(c)
+    except Exception:
+        pass  # 发现失败不影响后续
 
     all_stations = []
     for city in cities_to_search:
@@ -102,7 +119,7 @@ async def create_route(req: RouteRequest):
         except Exception:
             pass
 
-    # 去重（按名称）
+    # 去重
     seen_names = set()
     stations = []
     for s in all_stations:
@@ -119,7 +136,7 @@ async def create_route(req: RouteRequest):
 
     # 2. 构建规划参数
     params = {
-        "city": req.city,
+        "city": "、".join(cities_to_search),
         "start_location": (req.start_lng, req.start_lat),
         "end_location": (req.end_lng, req.end_lat),
         "car_model": req.car_model,
@@ -127,6 +144,8 @@ async def create_route(req: RouteRequest):
         "consumption": req.consumption if req.consumption > 0 else None,
         "initial_soc": req.initial_soc,
         "max_swaps": req.max_swaps,
+        "strategy": req.strategy,
+        "condition": req.condition,
         "swap_stations": stations,
     }
 
