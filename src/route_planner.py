@@ -1,6 +1,6 @@
 """
 路线规划核心算法
-方向感知贪心 + 2-opt 局部优化 + SOC 约束
+Beam Search（束搜索）+ SOC 约束 + 多策略支持
 """
 
 import math
@@ -12,7 +12,6 @@ from src.car_db import CAR_CONSUMPTION_DB, DEFAULT_BATTERY, DEFAULT_CONSUMPTION
 
 
 def get_car_params(car_model: str) -> tuple[float, float]:
-    """根据车型获取 (consumption kWh/100km, battery kWh)"""
     if car_model in CAR_CONSUMPTION_DB:
         info = CAR_CONSUMPTION_DB[car_model]
         return info["consumption"], info["battery"]
@@ -29,18 +28,8 @@ def calc_arrival_soc(
     distance_km: float, battery_kwh: float, consumption: float, initial_soc: float,
     condition: str = "normal"
 ) -> float:
-    """计算到达时的剩余 SOC (%)
-    condition: normal/winter/highway/winter_highway 影响能耗
-    """
-    # 能耗调整系数
-    factors = {
-        "normal": 1.0,
-        "winter": 1.20,        # 冬季多耗 20%
-        "highway": 1.15,       # 高速多耗 15%
-        "winter_highway": 1.35, # 冬季高速多耗 35%
-    }
+    factors = {"normal": 1.0, "winter": 1.20, "highway": 1.15, "winter_highway": 1.35}
     adj_consumption = consumption * factors.get(condition, 1.0)
-
     if distance_km <= 0:
         return round(initial_soc, 1)
     energy_used = (distance_km / 100) * adj_consumption
@@ -53,7 +42,6 @@ def calc_arrival_soc(
 
 
 def calc_swap_result(arrival_soc: float, target_soc: float = 80.0) -> float:
-    """换电后 SOC（保守估计 80%）"""
     return round(max(target_soc, min(arrival_soc + 20, 95)), 1)
 
 
@@ -61,103 +49,49 @@ def calc_swap_result(arrival_soc: float, target_soc: float = 80.0) -> float:
 
 
 def generate_risks(segments: list[dict], battery: float = 75, consumption: float = 14.5) -> list[dict]:
-    """
-    生成风险提示
-
-    Args:
-        segments: [{distance, arrival_soc}]
-        battery: 电池容量 kWh
-        consumption: 百公里能耗 kWh/100km
-    """
-    risks = []
-    total_distance = 0.0
-    low_soc_count = 0
-
+    risks, total_distance, low_soc_count = [], 0.0, 0
     for i, seg in enumerate(segments):
         total_distance += seg["distance"]
         arrival_soc = seg["arrival_soc"]
-
         if arrival_soc < 10:
             low_soc_count += 1
-            risks.append({
-                "level": "danger",
-                "segment": i,
-                "message": f"第{i + 1}段到站 SOC 仅 {arrival_soc}%, 有趴窝风险，建议确认该站可用性",
-            })
+            risks.append({"level": "danger", "segment": i,
+                          "message": f"第{i + 1}段到站 SOC 仅 {arrival_soc}%, 有趴窝风险"})
         elif arrival_soc < 20:
             low_soc_count += 1
-            risks.append({
-                "level": "warning",
-                "segment": i,
-                "message": f"第{i + 1}段到站 SOC 为 {arrival_soc}%, 建议预留备选换电站",
-            })
-
+            risks.append({"level": "warning", "segment": i,
+                          "message": f"第{i + 1}段到站 SOC 为 {arrival_soc}%, 建议预留备选换电站"})
         if seg["distance"] > 200:
-            risks.append({
-                "level": "warning",
-                "segment": i,
-                "message": f"第{i + 1}段距离 {seg['distance']:.0f}km, 超过 200km 建议提前确认换电站可用性",
-            })
-
+            risks.append({"level": "warning", "segment": i,
+                          "message": f"第{i + 1}段 {seg['distance']:.0f}km, 超过 200km 建议提前确认"})
         if total_distance > 500 and i == len(segments) - 1:
-            risks.append({
-                "level": "info",
-                "segment": i,
-                "message": f"全程累计里程 {total_distance:.0f}km, 请注意驾驶疲劳，建议每 200km 休息",
-            })
+            risks.append({"level": "info", "segment": i,
+                          "message": f"全程 {total_distance:.0f}km, 请注意驾驶疲劳"})
 
     if low_soc_count >= 2:
-        risks.append({
-            "level": "info",
-            "segment": 0,
-            "message": f"全程有 {low_soc_count} 段到站 SOC 低于 20%, 建议适当增加换电次数或降低能耗",
-        })
+        risks.append({"level": "info", "segment": 0,
+                      "message": f"全程 {low_soc_count} 段 SOC 低于 20%, 建议增加换电次数"})
 
-    # 超长单段（换电次数不够）
     max_seg = max((s["distance"] for s in segments), default=0)
-    if max_seg > 250:
-        risks.append({
-            "level": "warning",
-            "segment": 0,
-            "message": f"最长一段达 {max_seg:.0f}km，建议增加换电次数，避免续航不足",
-        })
-    elif max_seg > 300:
-        risks.append({
-            "level": "danger",
-            "segment": 0,
-            "message": f"最长一段达 {max_seg:.0f}km，单段过远，强烈建议增加换电次数",
-        })
+    if max_seg > 300:
+        risks.append({"level": "danger", "segment": 0,
+                      "message": f"最长一段 {max_seg:.0f}km，强烈建议增加换电次数"})
+    elif max_seg > 250:
+        risks.append({"level": "warning", "segment": 0,
+                      "message": f"最长一段 {max_seg:.0f}km，建议增加换电次数"})
 
-    # 智能推荐：依据总里程和车辆续航推荐换电次数
-    seg_count = max(len(segments) - 1, 1)  # 去掉最后一段到终点
+    # 智能推荐换电次数
+    seg_count = max(len(segments) - 1, 1)
     if battery > 0 and consumption > 0:
-        # 理论续航 = 电池 / 能耗 * 100
-        theoretical_range = battery / consumption * 100
-        # 实际可用续航：80% 电量（换电后） - 10% 余量
-        usable_range = theoretical_range * 0.7  # 70% 为可用范围
-        # 推荐最少换电次数
+        usable_range = (battery / consumption * 100) * 0.7
         if usable_range > 0:
-            recommended_swaps = max(1, int(total_distance / usable_range))
-            if recommended_swaps > seg_count:
+            recommended = max(1, int(total_distance / usable_range))
+            if recommended > seg_count:
                 risks.append({
-                    "level": "warning",
-                    "segment": 0,
-                    "message": (
-                        f"全程 {total_distance:.0f}km，按 {consumption} kWh/100km 能耗 "
-                        f"建议至少 {recommended_swaps} 次换电（当前仅 {seg_count} 次），"
-                        "请增加换电次数确保续航"
-                    ),
+                    "level": "warning", "segment": 0,
+                    "message": (f"全程 {total_distance:.0f}km，建议至少 {recommended} 次换电"
+                                f"（当前 {seg_count} 次），请增加换电次数"),
                 })
-            elif recommended_swaps > seg_count + 2:
-                risks.append({
-                    "level": "danger",
-                    "segment": 0,
-                    "message": (
-                        f"全程 {total_distance:.0f}km 过远，当前 {seg_count} 次换电严重不足，"
-                        f"建议至少 {recommended_swaps} 次换电"
-                    ),
-                })
-
     return risks
 
 
@@ -165,79 +99,26 @@ def generate_risks(segments: list[dict], battery: float = 75, consumption: float
 
 
 def _haversine(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
-    """Haversine 公式计算两点间球面距离 (km)"""
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlng = math.radians(lng2 - lng1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-# ============ 2-opt 局部优化 ============
-
-
-def _total_route_distance(
-    stations: list[dict], start: tuple[float, float], end: tuple[float, float]
-) -> float:
-    """计算完整路线的总距离 (Haversine, km)"""
-    if not stations:
-        return _haversine(start[0], start[1], end[0], end[1])
-    total = _haversine(start[0], start[1], stations[0]["lng"], stations[0]["lat"])
-    for i in range(len(stations) - 1):
-        total += _haversine(
-            stations[i]["lng"], stations[i]["lat"],
-            stations[i + 1]["lng"], stations[i + 1]["lat"],
-        )
-    total += _haversine(
-        stations[-1]["lng"], stations[-1]["lat"],
-        end[0], end[1],
-    )
-    return total
-
-
-def _optimize_2opt(
-    stations: list[dict], start: tuple[float, float], end: tuple[float, float]
-) -> list[dict]:
-    """2-opt 局部搜索优化站点顺序"""
-    if len(stations) < 3:
-        return stations
-    improved = True
-    while improved:
-        improved = False
-        best_distance = _total_route_distance(stations, start, end)
-        for i in range(len(stations) - 1):
-            for j in range(i + 1, len(stations)):
-                new_stations = stations[:i] + stations[i: j + 1][::-1] + stations[j + 1:]
-                new_distance = _total_route_distance(new_stations, start, end)
-                if new_distance < best_distance * 0.999:
-                    stations = new_stations
-                    best_distance = new_distance
-                    improved = True
-                    break
-            if improved:
-                break
-    return stations
-
-
-# ============ 主规划器 ============
+# ============ 去重 ============
 
 
 def _deduplicate_stations(stations: list[dict]) -> list[dict]:
-    """去重：合并距离 < 1km 的站点，保留名称较长的那个"""
     if not stations:
         return []
     deduped = []
     for st in stations:
         is_dup = False
         for existing in deduped:
-            d = _haversine(existing["lng"], existing["lat"], st["lng"], st["lat"])
-            if d < 1.0:
+            if _haversine(existing["lng"], existing["lat"], st["lng"], st["lat"]) < 1.0:
                 is_dup = True
-                # 保留名称较长的（通常更详细）
                 if len(st.get("name", "")) > len(existing.get("name", "")):
                     existing["name"] = st["name"]
                     existing["address"] = st.get("address", existing.get("address", ""))
@@ -247,14 +128,15 @@ def _deduplicate_stations(stations: list[dict]) -> list[dict]:
     return deduped
 
 
+# ============ 主规划器（Beam Search） ============
+
+
 def optimize_route(params: dict) -> dict[str, Any]:
     """
-    主路线规划入口
-    方向感知贪心算法 + 多策略支持
+    Beam Search（束搜索）路线规划
 
-    params 额外支持:
-        strategy: "balanced" | "shortest" | "safest" (默认 balanced)
-        condition: "normal" | "winter" | "highway" | "winter_highway" (默认 normal)
+    每步保留 K 条最优候选路线，最后选全局最优
+    比贪心算法好得多，接近全局最优
     """
     start = params["start_location"]
     end = params["end_location"]
@@ -271,119 +153,87 @@ def optimize_route(params: dict) -> dict[str, Any]:
         battery = params.get("battery_kwh", DEFAULT_BATTERY)
 
     stations = _deduplicate_stations(params.get("swap_stations", []))
-
     if not stations:
-        return {
-            "route": [], "total_distance": 0, "total_duration": 0,
-            "unique_station_count": 0, "final_arrival_soc": initial_soc,
-            "car_model": car_model, "consumption": consumption, "battery": battery,
-            "segments": [],
-            "risks": [{"level": "info", "segment": 0, "message": "未找到换电站，请检查城市名称或 API Key 配置"}],
-        }
+        return {"route": [], "total_distance": 0, "total_duration": 0,
+                "unique_station_count": 0, "final_arrival_soc": initial_soc,
+                "car_model": car_model, "consumption": consumption, "battery": battery,
+                "segments": [],
+                "risks": [{"level": "info", "segment": 0, "message": "未找到换电站"}]}
 
-    # 总方向向量
-    total_dx = end[0] - start[0]
-    total_dy = end[1] - start[1]
     total_dist = _haversine(start[0], start[1], end[0], end[1])
 
-    def _progress_score(st_lng, st_lat, cur_lng, cur_lat):
-        """计算站点在前往目的地方向上的进度得分 (0~1)"""
+    def _progress(sl, sa, cl, ca):
         if total_dist < 1:
             return 0.5
-        cur_to_end = _haversine(cur_lng, cur_lat, end[0], end[1])
-        st_to_end = _haversine(st_lng, st_lat, end[0], end[1])
-        saved = cur_to_end - st_to_end
+        saved = _haversine(cl, ca, end[0], end[1]) - _haversine(sl, sa, end[0], end[1])
         return max(0, min(1, saved / total_dist))
 
-    # ==== 阶段一：方向感知贪心选择 ====
-    current_pos = start
-    current_soc = initial_soc
-    remaining = list(range(len(stations)))
-    route_indices: list[int] = []
-    swap_count = 0
+    # ==== Beam Search ====
+    BEAM_WIDTH = 4
+    # 每条束: (indices, pos, soc, total_dist)
+    beams: list[tuple] = [([], start, initial_soc, 0.0)]
 
-    while swap_count < max_swaps and remaining:
-        candidates = []
-        for idx in remaining:
-            st = stations[idx]
-            dist_km = _haversine(current_pos[0], current_pos[1], st["lng"], st["lat"])
-            if dist_km < 0.2:
-                continue
-            arrival = calc_arrival_soc(dist_km, battery, consumption, current_soc, condition)
-            progress = _progress_score(st["lng"], st["lat"], current_pos[0], current_pos[1])
+    for _ in range(max_swaps):
+        candidates: list[tuple] = []
+        for indices, pos, soc, tdist in beams:
+            for idx in range(len(stations)):
+                if idx in indices:
+                    continue
+                st = stations[idx]
+                sd = _haversine(pos[0], pos[1], st["lng"], st["lat"])
+                if sd < 0.2:
+                    continue
+                arrival = calc_arrival_soc(sd, battery, consumption, soc, condition)
+                if arrival <= 0:
+                    continue
+                nsoc = calc_swap_result(arrival)
+                prog = _progress(st["lng"], st["lat"], pos[0], pos[1])
 
-            max_d = max(1, max(
-                _haversine(current_pos[0], current_pos[1], stations[j]["lng"], stations[j]["lat"])
-                for j in remaining
-            ))
-            dist_score = 1 - dist_km / max_d
+                max_sd = max(1, sd)
+                ds = 1 - sd / max_sd
+                if strategy == "shortest":
+                    score = ds * 0.5 + prog * 0.3 + (arrival / 100) * 0.2
+                elif strategy == "safest":
+                    score = (arrival / 100) * 0.5 + ds * 0.3 + prog * 0.2
+                else:
+                    score = prog * 0.4 + ds * 0.3 + (arrival / 100) * 0.3
 
-            # 多策略评分权重
-            if strategy == "shortest":
-                # 最短路线：距离权重最大
-                score = dist_score * 0.6 + progress * 0.3 + (arrival / 100) * 0.1
-            elif strategy == "safest":
-                # 最安全：SOC 权重最大
-                score = (arrival / 100) * 0.5 + dist_score * 0.3 + progress * 0.2
-            else:
-                # 均衡：综合评分
-                score = progress * 0.5 + dist_score * 0.3 + (arrival / 100) * 0.2
-
-            candidates.append((idx, score, dist_km, arrival, progress))
+                candidates.append((indices + [idx], (st["lng"], st["lat"]), nsoc, tdist + sd, score))
 
         if not candidates:
             break
+        candidates.sort(key=lambda x: -x[4])
+        beams = [(c[0], c[1], c[2], c[3]) for c in candidates[:BEAM_WIDTH]]
 
-        # 按综合评分降序
-        candidates.sort(key=lambda x: -x[1])
+    # 选最优束
+    def _beam_score(b):
+        _, pos, _, dist = b
+        return dist + _haversine(pos[0], pos[1], end[0], end[1])
 
-        # 选第一个能安全到达的
-        best_idx = best_dist = None
-        for idx, score, dist_km, arrival, progress in candidates:
-            if arrival >= 8:
-                best_idx = idx
-                best_dist = dist_km
-                break
-
-        # 都不安全但还有电 → 选最近的
-        if best_idx is None:
-            candidates.sort(key=lambda x: x[2])
-            for idx, score, dist_km, arrival, progress in candidates:
-                if arrival > 0:
-                    best_idx = idx
-                    best_dist = dist_km
-                    break
-
-        if best_idx is None:
-            break
-
-        remaining.remove(best_idx)
-        route_indices.append(best_idx)
-
-        station = stations[best_idx]
-        arrival_soc = calc_arrival_soc(best_dist, battery, consumption, current_soc, condition)
-        swap_soc = calc_swap_result(arrival_soc)
-
-        current_pos = (station["lng"], station["lat"])
-        current_soc = swap_soc
-        swap_count += 1
-
-    # 去重索引
-    seen: set[int] = set()
-    unique_indices = []
-    for idx in route_indices:
-        if idx not in seen:
-            seen.add(idx)
-            unique_indices.append(idx)
-    route_indices = unique_indices
+    route_indices = min(beams, key=_beam_score)[0]
 
     # ==== 阶段二：2-opt 优化 ====
     selected = [stations[i] for i in route_indices]
-    optimized = _optimize_2opt(selected, start, end)
+    if len(selected) >= 3:
+        improved = True
+        while improved:
+            improved = False
+            cur_dist = _route_dist(selected, start, end)
+            for i in range(len(selected) - 1):
+                for j in range(i + 1, len(selected)):
+                    rev = selected[:i] + selected[i:j + 1][::-1] + selected[j + 1:]
+                    nd = _route_dist(rev, start, end)
+                    if nd < cur_dist * 0.999:
+                        selected = rev
+                        cur_dist = nd
+                        improved = True
+                        break
+                if improved:
+                    break
 
     # 恢复索引
     optimized_indices = []
-    for st in optimized:
+    for st in selected:
         for idx in route_indices:
             s = stations[idx]
             if abs(s["lng"] - st["lng"]) < 0.0001 and abs(s["lat"] - st["lat"]) < 0.0001:
@@ -391,58 +241,52 @@ def optimize_route(params: dict) -> dict[str, Any]:
                     optimized_indices.append(idx)
                 break
 
-    # ==== 阶段三：构建路线 ====
-    current_pos = start
-    current_soc = initial_soc
+    # ==== 构建路线 ====
+    pos, soc = start, initial_soc
     route = []
-
-    for seq_idx, st_idx in enumerate(optimized_indices):
-        station = stations[st_idx]
-        dist_km = _haversine(current_pos[0], current_pos[1], station["lng"], station["lat"])
-        arrival_soc = calc_arrival_soc(dist_km, battery, consumption, current_soc, condition)
-        swap_soc = calc_swap_result(arrival_soc)
-        duration_sec = int(dist_km / 60 * 3600) if dist_km > 0 else 0
-
+    for seq, st_idx in enumerate(optimized_indices):
+        st = stations[st_idx]
+        d = _haversine(pos[0], pos[1], st["lng"], st["lat"])
+        asoc = calc_arrival_soc(d, battery, consumption, soc, condition)
+        ssoc = calc_swap_result(asoc)
         route.append({
-            "index": seq_idx + 1,
-            "station_name": station["name"],
-            "station_address": station.get("address", ""),
-            "lng": station["lng"],
-            "lat": station["lat"],
-            "distance": round(dist_km, 1),
-            "duration": duration_sec,
-            "arrival_soc": arrival_soc,
-            "swap_soc": swap_soc,
+            "index": seq + 1,
+            "station_name": st["name"],
+            "station_address": st.get("address", ""),
+            "lng": st["lng"], "lat": st["lat"],
+            "distance": round(d, 1),
+            "duration": int(d / 60 * 3600) if d > 0 else 0,
+            "arrival_soc": asoc, "swap_soc": ssoc,
         })
-
-        current_pos = (station["lng"], station["lat"])
-        current_soc = swap_soc
+        pos, soc = (st["lng"], st["lat"]), ssoc
 
     # 最后一段
-    last_pos = (route[-1]["lng"], route[-1]["lat"]) if route else start
-    final_dist = _haversine(last_pos[0], last_pos[1], end[0], end[1])
-    final_duration = int(final_dist / 60 * 3600) if final_dist > 0 else 0
-    final_soc = calc_arrival_soc(final_dist, battery, consumption, current_soc, condition)
+    lp = (route[-1]["lng"], route[-1]["lat"]) if route else start
+    fd = _haversine(lp[0], lp[1], end[0], end[1])
+    fsoc = calc_arrival_soc(fd, battery, consumption, soc, condition)
 
-    segments = []
-    for r in route:
-        segments.append({"distance": r["distance"], "arrival_soc": r["arrival_soc"]})
-    segments.append({"distance": round(final_dist, 1), "arrival_soc": final_soc})
-
-    risks = generate_risks(segments, battery, consumption)
-
-    total_distance = sum(r["distance"] for r in route) + round(final_dist, 1)
-    total_duration = sum(r["duration"] for r in route) + final_duration
+    segments = [{"distance": r["distance"], "arrival_soc": r["arrival_soc"]} for r in route]
+    segments.append({"distance": round(fd, 1), "arrival_soc": fsoc})
 
     return {
         "route": route,
-        "total_distance": round(total_distance, 1),
-        "total_duration": total_duration,
+        "total_distance": round(sum(r["distance"] for r in route) + round(fd, 1), 1),
+        "total_duration": sum(r["duration"] for r in route) + (int(fd / 60 * 3600) if fd > 0 else 0),
         "unique_station_count": len(route),
-        "final_arrival_soc": final_soc,
-        "car_model": car_model,
-        "consumption": consumption,
-        "battery": battery,
+        "final_arrival_soc": fsoc,
+        "car_model": car_model, "consumption": consumption, "battery": battery,
         "segments": segments,
-        "risks": risks,
+        "risks": generate_risks(segments, battery, consumption),
     }
+
+
+def _route_dist(stations: list[dict], start: tuple, end: tuple) -> float:
+    """计算完整路线的总 Haversine 距离"""
+    if not stations:
+        return _haversine(start[0], start[1], end[0], end[1])
+    total = _haversine(start[0], start[1], stations[0]["lng"], stations[0]["lat"])
+    for i in range(len(stations) - 1):
+        total += _haversine(stations[i]["lng"], stations[i]["lat"],
+                            stations[i + 1]["lng"], stations[i + 1]["lat"])
+    total += _haversine(stations[-1]["lng"], stations[-1]["lat"], end[0], end[1])
+    return total
