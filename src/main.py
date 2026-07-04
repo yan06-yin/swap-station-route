@@ -247,7 +247,7 @@ async def _enrich_with_real_distances(result: dict, params: dict) -> None:
 
     # 重新生成风险提示（使用真实距离）
     from src.route_planner import generate_risks
-    result["risks"] = generate_risks(segments)
+    result["risks"] = generate_risks(segments, result.get("battery", 75), result.get("consumption", 14.5))
 
     # 获取完整路线折线（含所有途经点，用于地图绘制）
     try:

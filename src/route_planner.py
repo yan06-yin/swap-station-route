@@ -60,15 +60,14 @@ def calc_swap_result(arrival_soc: float, target_soc: float = 80.0) -> float:
 # ============ 风险提示 ============
 
 
-def generate_risks(segments: list[dict]) -> list[dict]:
+def generate_risks(segments: list[dict], battery: float = 75, consumption: float = 14.5) -> list[dict]:
     """
     生成风险提示
-    规则:
-    - 到站 SOC < 10%: 危险
-    - 到站 SOC < 20%: 警告
-    - 单段 > 200km: 续航警告
-    - 累计 > 500km: 疲劳提醒
-    - 连续低 SOC: 建议增加换电次数
+
+    Args:
+        segments: [{distance, arrival_soc}]
+        battery: 电池容量 kWh
+        consumption: 百公里能耗 kWh/100km
     """
     risks = []
     total_distance = 0.0
@@ -129,14 +128,35 @@ def generate_risks(segments: list[dict]) -> list[dict]:
             "message": f"最长一段达 {max_seg:.0f}km，单段过远，强烈建议增加换电次数",
         })
 
-    # 全程长但换电少
-    seg_count = len(segments)
-    if total_distance > 400 and seg_count <= 3:
-        risks.append({
-            "level": "info",
-            "segment": 0,
-            "message": f"全程 {total_distance:.0f}km 仅 {seg_count} 段，建议适当增加换电次数确保续航",
-        })
+    # 智能推荐：依据总里程和车辆续航推荐换电次数
+    seg_count = max(len(segments) - 1, 1)  # 去掉最后一段到终点
+    if battery > 0 and consumption > 0:
+        # 理论续航 = 电池 / 能耗 * 100
+        theoretical_range = battery / consumption * 100
+        # 实际可用续航：80% 电量（换电后） - 10% 余量
+        usable_range = theoretical_range * 0.7  # 70% 为可用范围
+        # 推荐最少换电次数
+        if usable_range > 0:
+            recommended_swaps = max(1, int(total_distance / usable_range))
+            if recommended_swaps > seg_count:
+                risks.append({
+                    "level": "warning",
+                    "segment": 0,
+                    "message": (
+                        f"全程 {total_distance:.0f}km，按 {consumption} kWh/100km 能耗 "
+                        f"建议至少 {recommended_swaps} 次换电（当前仅 {seg_count} 次），"
+                        "请增加换电次数确保续航"
+                    ),
+                })
+            elif recommended_swaps > seg_count + 2:
+                risks.append({
+                    "level": "danger",
+                    "segment": 0,
+                    "message": (
+                        f"全程 {total_distance:.0f}km 过远，当前 {seg_count} 次换电严重不足，"
+                        f"建议至少 {recommended_swaps} 次换电"
+                    ),
+                })
 
     return risks
 
@@ -409,7 +429,7 @@ def optimize_route(params: dict) -> dict[str, Any]:
         segments.append({"distance": r["distance"], "arrival_soc": r["arrival_soc"]})
     segments.append({"distance": round(final_dist, 1), "arrival_soc": final_soc})
 
-    risks = generate_risks(segments)
+    risks = generate_risks(segments, battery, consumption)
 
     total_distance = sum(r["distance"] for r in route) + round(final_dist, 1)
     total_duration = sum(r["duration"] for r in route) + final_duration
