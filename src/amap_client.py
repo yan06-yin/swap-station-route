@@ -85,9 +85,9 @@ async def get_driving_route(
         "origin": f"{origin[0]},{origin[1]}",
         "destination": f"{destination[0]},{destination[1]}",
         "key": key,
-        "strategy": "0",  # 速度优先
+        "strategy": "0",
     }
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, params=params)
         data = resp.json()
 
@@ -198,12 +198,12 @@ async def discover_cities_along_route(
     """
     发现起点到终点沿途经过的城市
 
-    1. 获取驾车路线
+    1. 获取驾车路线（30s 超时，适应长途）
     2. 从路线折线中采样点
     3. 逆地理编码获取城市名
     4. 去重返回
     """
-    # 先获取路线
+    # 先获取路线（用更长的超时）
     route = await get_driving_route(start, end)
     polyline_str = route.get("polyline", "")
     steps = route.get("steps", [])

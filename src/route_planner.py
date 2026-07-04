@@ -181,13 +181,29 @@ def optimize_route(params: dict) -> dict[str, Any]:
                     continue
                 st = stations[idx]
                 sd = _haversine(pos[0], pos[1], st["lng"], st["lat"])
-                if sd < 0.2:
-                    continue
+                if sd < 0.5:
+                    continue  # 跳过太近的
                 arrival = calc_arrival_soc(sd, battery, consumption, soc, condition)
                 if arrival <= 0:
                     continue
                 nsoc = calc_swap_result(arrival)
                 prog = _progress(st["lng"], st["lat"], pos[0], pos[1])
+
+                # 距离惩罚：如果已经选过站，且新站距离太近，大幅扣分
+                proximity_penalty = 1.0
+                if indices:
+                    for prev_idx in indices:
+                        prev_st = stations[prev_idx]
+                        dist_to_prev = _haversine(prev_st["lng"], prev_st["lat"], st["lng"], st["lat"])
+                        if dist_to_prev < 5:
+                            proximity_penalty = 0.1  # 5km 内扣到 0.1
+                        elif dist_to_prev < 10:
+                            proximity_penalty = 0.3  # 10km 内扣到 0.3
+
+                # 进度惩罚：如果没往目的地方向走，大幅扣分
+                progress_penalty = 1.0
+                if prog < 0.05 and sd > 5:
+                    progress_penalty = 0.2  # 不但没靠近目的地还跑了很远，扣分
 
                 max_sd = max(1, sd)
                 ds = 1 - sd / max_sd
@@ -198,7 +214,9 @@ def optimize_route(params: dict) -> dict[str, Any]:
                 else:
                     score = prog * 0.4 + ds * 0.3 + (arrival / 100) * 0.3
 
-                candidates.append((indices + [idx], (st["lng"], st["lat"]), nsoc, tdist + sd, score))
+                # 最终得分 = 原始分 x 惩罚系数
+                final_score = score * proximity_penalty * progress_penalty
+                candidates.append((indices + [idx], (st["lng"], st["lat"]), nsoc, tdist + sd, final_score))
 
         if not candidates:
             break
