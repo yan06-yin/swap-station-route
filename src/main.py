@@ -22,6 +22,7 @@ from src.amap_client import (
     get_full_route_with_waypoints,
     get_js_api_key,
     get_js_security_code,
+    reverse_geocode,
     search_swap_stations,
 )
 from src.feishu_bot import send_route_card
@@ -98,8 +99,15 @@ async def get_config():
 async def create_route(req: RouteRequest):
     """创建打卡路线"""
     # 1. 搜索换电站（多城市搜索）
-    # 先搜起点城市
     cities_to_search = [req.city]
+
+    # 逆地理编码终点坐标 → 获取终点城市
+    try:
+        end_info = await reverse_geocode(req.end_lng, req.end_lat)
+        if end_info.get("city") and end_info["city"] not in cities_to_search:
+            cities_to_search.append(end_info["city"])
+    except Exception:
+        pass
 
     # 自动发现沿途城市
     try:
